@@ -1,0 +1,35 @@
+{
+  "success": true,
+  "result": {
+    "validation_result": {
+      "overall_status": "pass",
+      "budget_check": {
+        "status": "pass",
+        "message": "预算充足，剩余预算: 36473.79",
+        "details": {
+          "department": "财务部",
+          "budget": 50000,
+          "used": 13526.207882228558,
+          "remaining": 36473.792117771445,
+          "amount": 8636.16
+        }
+      },
+      "invoice_check": {
+        "status": "pass",
+        "message": "发票信息一致",
+        "issues": []
+      },
+      "compliance_check": {
+        "status": "pass",
+        "message": "符合公司报销政策",
+        "issues": []
+      },
+      "attachment_check": {
+        "status": "pass",
+        "message": "附件完整",
+        "issues": []
+      }
+    },
+    "submission_result": null
+  }
+}

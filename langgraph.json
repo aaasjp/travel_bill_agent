@@ -1,0 +1,13 @@
+{
+  "dependencies": [
+    "."
+  ],
+  "graphs": {
+    "expense_agent": "app:workflow"
+  },
+  "env": ".env",
+  "dockerfile_lines": [
+    "RUN pip install --no-cache-dir -r requirements.txt"
+  ],
+  "python_version": "3.12"
+} 

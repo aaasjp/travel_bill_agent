@@ -1,0 +1,42 @@
+{
+  "success": true,
+  "result": {
+    "expense_records": [
+      {
+        "record_id": "ER-74451",
+        "invoice_id": "INV-20250501-001",
+        "expense_type": "会议费",
+        "amount": 173.68,
+        "status": "draft",
+        "required_fields": [
+          "meeting_name",
+          "meeting_date",
+          "attendees"
+        ],
+        "validation_result": "pending",
+        "category": "差旅费",
+        "project_code": "PRJ-2025-001"
+      },
+      {
+        "record_id": "ER-94834",
+        "invoice_id": "INV-20250501-002",
+        "expense_type": "交通费",
+        "amount": 2626.16,
+        "status": "draft",
+        "required_fields": [
+          "trip_purpose",
+          "origin",
+          "destination"
+        ],
+        "validation_result": "pending",
+        "category": "差旅费",
+        "project_code": "PRJ-2025-001"
+      }
+    ],
+    "summary": {
+      "total_created": 2,
+      "total_amount": 2799.8399999999997,
+      "needs_supplement": 2
+    }
+  }
+}

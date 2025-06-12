@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "result": {
+    "eligible": true,
+    "auto_process": true,
+    "allowance_amount": 500.0,
+    "days": 5,
+    "reason": "符合自动处理条件"
+  }
+}

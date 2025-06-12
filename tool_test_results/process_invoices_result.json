@@ -1,0 +1,38 @@
+{
+  "success": true,
+  "result": {
+    "processed_invoices": [
+      {
+        "invoice_id": "INV-44895",
+        "invoice_type": "火车票",
+        "invoice_code": "6441927481",
+        "invoice_number": "52504370",
+        "amount": 4647.2,
+        "invoice_date": "2025-05-09",
+        "vendor": "杭州网络科技有限公司",
+        "ocr_confidence": 0.84,
+        "file_path": "data/invoices/test1.jpg",
+        "verify_status": "valid"
+      },
+      {
+        "invoice_id": "INV-80627",
+        "invoice_type": "增值税专用发票",
+        "invoice_code": "1870254507",
+        "invoice_number": "69520744",
+        "amount": 2879.73,
+        "invoice_date": "2025-05-08",
+        "vendor": "北京科技有限公司",
+        "ocr_confidence": 0.98,
+        "file_path": "data/invoices/test2.pdf",
+        "verify_status": "valid"
+      }
+    ],
+    "failed_files": [],
+    "summary": {
+      "total_processed": 2,
+      "success_count": 2,
+      "failed_count": 0,
+      "total_amount": 7526.93
+    }
+  }
+}

@@ -1,0 +1,132 @@
+from typing import Dict, List, Optional, Any, Union
+from typing_extensions import TypedDict
+from datetime import datetime
+from pydantic import BaseModel, Field
+
+class ToolCall(TypedDict):
+    """工具调用"""
+    id: str
+    name: str
+    arguments: Dict[str, Any]
+
+class ToolResult(TypedDict):
+    """工具执行结果"""
+    id: str
+    name: str
+    result: Any
+    error: Optional[str]
+
+class ExpenseState(TypedDict, total=False):
+    """报销处理状态"""
+    
+    # 基本信息
+    task_id: str  # 任务ID
+    user_input: str  # 用户输入
+    client_id: str  # 客户端ID
+    
+    # 处理状态
+    intent: Dict[str, Any]  # 意图分析结果
+    plan: List[Dict[str, Any]]  # 任务执行计划
+    context: Dict[str, Any]  # 上下文信息
+    execution_log: List[Dict[str, Any]]  # 执行日志
+    current_step: int  # 当前执行步骤
+    results: Dict[str, Any]  # 执行结果
+    errors: List[Dict[str, Any]]  # 错误信息
+    
+    # 执行步骤跟踪
+    executed_steps_count: int  # 已执行步骤计数
+    executed_steps: List[int]  # 已执行步骤列表
+    missed_steps: List[int]  # 遗漏的步骤列表
+    missed_steps_to_execute: List[int]  # 需要重新执行的遗漏步骤列表
+    steps_completed: bool  # 当前计划的步骤是否已全部执行
+    
+    # 工具调用相关
+    tool_calls: Optional[List[Dict[str, Any]]]  # 工具调用请求
+    tool_results: Optional[Dict[str, Any]]  # 工具调用结果
+    
+    # 反思相关
+    reflection: Dict[str, Any]  # 反思结果
+    reflection_result: Dict[str, Any]  # 详细反思分析结果
+    
+    # 检索相关
+    need_retrieval: bool  # 是否需要检索信息
+    
+    # 任务完成标志
+    is_complete: bool  # 当前步骤是否完成
+    final_output: str  # 最终输出结果
+    
+    # 时间信息
+    created_at: datetime  # 创建时间
+    updated_at: datetime  # 更新时间
+    
+    # 人工干预相关
+    status: str  # 可能的值: running, waiting_for_human, processing, completed, error
+    needs_human_intervention: bool  # 是否需要人工干预
+    intervention_request: Optional[Dict[str, Any]]  # 人工干预请求
+    intervention_response: Optional[Dict[str, Any]]  # 人工干预响应
+    intervention_type: Optional[str]  # 介入类型：信息补充、决策确认、异常处理、权限授予
+    intervention_priority: Optional[str]  # 介入优先级：紧急、重要、一般
+    intervention_history: Optional[List[Dict[str, Any]]]  # 历史介入记录
+
+# 初始化函数
+def create_expense_state(
+    task_id: str,
+    user_input: str,
+    client_id: str = "default"
+) -> ExpenseState:
+    """创建初始状态
+    
+    Args:
+        task_id: 任务ID
+        user_input: 用户输入
+        client_id: 客户端ID
+        
+    Returns:
+        初始状态
+    """
+    return {
+        # 基础信息
+        "task_id": task_id,
+        "client_id": client_id,
+        "user_input": user_input,
+        
+        # 分析结果
+        "intent": {},
+        "plan": [],
+        "context": {},
+        
+        # 执行信息
+        "execution_log": [],
+        "current_step": 0,
+        "results": {},
+        "errors": [],
+        
+        # 执行步骤跟踪
+        "executed_steps_count": 0,
+        "executed_steps": [],
+        "missed_steps": [],
+        "missed_steps_to_execute": [],
+        "steps_completed": False,
+        
+        # 反思信息
+        "reflection": {},
+        "reflection_result": {},
+        
+        # 状态控制
+        "need_retrieval": False,
+        "is_complete": False,
+        "final_output": "",
+        
+        # 时间戳
+        "created_at": datetime.now(),
+        "updated_at": datetime.now(),
+        
+        # 人工干预相关
+        "status": "running",  # 可能的值: running, waiting_for_human, processing, completed, error
+        "needs_human_intervention": False,
+        "intervention_request": None,
+        "intervention_response": None,
+        "intervention_type": None,
+        "intervention_priority": None,
+        "intervention_history": []
+    } 

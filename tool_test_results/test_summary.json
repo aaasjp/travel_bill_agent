@@ -1,0 +1,167 @@
+{
+  "timestamp": "2025-06-12 09:40:45",
+  "total_tools": 7,
+  "tested_tools": 7,
+  "success_count": 7,
+  "fail_count": 0,
+  "results": {
+    "process_invoices": {
+      "success": true,
+      "result": {
+        "processed_invoices": [
+          {
+            "invoice_id": "INV-44895",
+            "invoice_type": "火车票",
+            "invoice_code": "6441927481",
+            "invoice_number": "52504370",
+            "amount": 4647.2,
+            "invoice_date": "2025-05-09",
+            "vendor": "杭州网络科技有限公司",
+            "ocr_confidence": 0.84,
+            "file_path": "data/invoices/test1.jpg",
+            "verify_status": "valid"
+          },
+          {
+            "invoice_id": "INV-80627",
+            "invoice_type": "增值税专用发票",
+            "invoice_code": "1870254507",
+            "invoice_number": "69520744",
+            "amount": 2879.73,
+            "invoice_date": "2025-05-08",
+            "vendor": "北京科技有限公司",
+            "ocr_confidence": 0.98,
+            "file_path": "data/invoices/test2.pdf",
+            "verify_status": "valid"
+          }
+        ],
+        "failed_files": [],
+        "summary": {
+          "total_processed": 2,
+          "success_count": 2,
+          "failed_count": 0,
+          "total_amount": 7526.93
+        }
+      }
+    },
+    "manage_expense_records": {
+      "success": true,
+      "result": {
+        "expense_records": [
+          {
+            "record_id": "ER-74451",
+            "invoice_id": "INV-20250501-001",
+            "expense_type": "会议费",
+            "amount": 173.68,
+            "status": "draft",
+            "required_fields": [
+              "meeting_name",
+              "meeting_date",
+              "attendees"
+            ],
+            "validation_result": "pending",
+            "category": "差旅费",
+            "project_code": "PRJ-2025-001"
+          },
+          {
+            "record_id": "ER-94834",
+            "invoice_id": "INV-20250501-002",
+            "expense_type": "交通费",
+            "amount": 2626.16,
+            "status": "draft",
+            "required_fields": [
+              "trip_purpose",
+              "origin",
+              "destination"
+            ],
+            "validation_result": "pending",
+            "category": "差旅费",
+            "project_code": "PRJ-2025-001"
+          }
+        ],
+        "summary": {
+          "total_created": 2,
+          "total_amount": 2799.8399999999997,
+          "needs_supplement": 2
+        }
+      }
+    },
+    "manage_reimbursement": {
+      "success": true,
+      "result": {
+        "bill_id": "REIM-98475",
+        "bill_number": "BX-20250612-4923",
+        "total_amount": 4053.8500000000004,
+        "expense_records": [
+          "EXP-001",
+          "EXP-002"
+        ],
+        "required_fields": [
+          "reimbursement_type",
+          "department",
+          "applicant",
+          "payment_method",
+          "bank_account"
+        ],
+        "status": "draft"
+      }
+    },
+    "submit_reimbursement": {
+      "success": true,
+      "result": {
+        "validation_result": {
+          "overall_status": "pass",
+          "budget_check": {
+            "status": "pass",
+            "message": "预算充足，剩余预算: 36473.79",
+            "details": {
+              "department": "财务部",
+              "budget": 50000,
+              "used": 13526.207882228558,
+              "remaining": 36473.792117771445,
+              "amount": 8636.16
+            }
+          },
+          "invoice_check": {
+            "status": "pass",
+            "message": "发票信息一致",
+            "issues": []
+          },
+          "compliance_check": {
+            "status": "pass",
+            "message": "符合公司报销政策",
+            "issues": []
+          },
+          "attachment_check": {
+            "status": "pass",
+            "message": "附件完整",
+            "issues": []
+          }
+        },
+        "submission_result": null
+      }
+    },
+    "query_status": {
+      "success": true,
+      "result": {
+        "bills": [],
+        "total_count": 0
+      }
+    },
+    "query_travel_applications": {
+      "success": true,
+      "result": {
+        "applications": []
+      }
+    },
+    "process_allowance": {
+      "success": true,
+      "result": {
+        "eligible": true,
+        "auto_process": true,
+        "allowance_amount": 500.0,
+        "days": 5,
+        "reason": "符合自动处理条件"
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+Registered tools count: 7
+Registered tools list:
+- process_invoices: 上传发票文件，进行OCR识别和真伪验证，返回可用的发票数据
+- manage_expense_records: 根据发票创建支出记录，自动映射费用类型，返回需要补充的字段
+- manage_reimbursement: 创建报销单，关联支出记录、出差申请和借款，保存报销单数据
+- submit_reimbursement: 验证报销单的完整性和合规性，然后提交审批
+- query_status: 查询用户权限、报销单状态、审批进度、支付状态等信息
+- query_travel_applications: 查询用户的差旅申请单，包括可报销次数等信息
+- process_allowance: 检查和申请差旅补助
+
+Available tool schemas:
+- process_invoices
+- manage_expense_records
+- manage_reimbursement
+- submit_reimbursement
+- query_status
+- query_travel_applications
+- process_allowance
