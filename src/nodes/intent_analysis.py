@@ -323,7 +323,7 @@ class IntentAnalysisNode:
 用户输入:
 {user_input}
 
-请分析上述输入，识别用户意图，并按照指定格式返回。/no_think"""
+请分析上述输入，识别用户意图，并按照指定格式返回。"""
     
     def _create_fallback_intent(self, user_prompt: str) -> Dict[str, Any]:
         """创建回退意图，当LLM调用或解析失败时使用

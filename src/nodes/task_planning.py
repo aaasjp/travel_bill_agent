@@ -219,6 +219,8 @@ class TaskPlanningNode:
             # 执行规划
             response = await self.model.ainvoke(self.prompt.format_messages(**inputs))
             response_text = response.content
+
+            print(f"response_text: {response_text}")
             
             # 计算模型调用执行时间
             llm_execution_time = time.time() - llm_call_start_time
