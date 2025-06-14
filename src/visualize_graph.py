@@ -18,8 +18,8 @@ def create_workflow_graph():
     nodes = [
         "意图分析\n(IntentAnalysisNode)",
         "任务规划\n(TaskPlanningNode)",
-        "执行\n(ExecutionNode)",
-        "工具执行\n(ToolExecutionNode)",
+        "执行\n(DecisionNode)",
+        "工具执行\n(ToolDecisionNode)",
         "结束\n(END)"
     ]
     
@@ -29,11 +29,11 @@ def create_workflow_graph():
     # 添加边和标签
     edges = [
         ("意图分析\n(IntentAnalysisNode)", "任务规划\n(TaskPlanningNode)", "无工具调用"),
-        ("意图分析\n(IntentAnalysisNode)", "工具执行\n(ToolExecutionNode)", "有工具调用"),
-        ("工具执行\n(ToolExecutionNode)", "任务规划\n(TaskPlanningNode)", "需继续规划"),
-        ("工具执行\n(ToolExecutionNode)", "结束\n(END)", "有最终输出"),
-        ("任务规划\n(TaskPlanningNode)", "执行\n(ExecutionNode)", ""),
-        ("执行\n(ExecutionNode)", "结束\n(END)", "")
+        ("意图分析\n(IntentAnalysisNode)", "工具执行\n(ToolDecisionNode)", "有工具调用"),
+        ("工具执行\n(ToolDecisionNode)", "任务规划\n(TaskPlanningNode)", "需继续规划"),
+        ("工具执行\n(ToolDecisionNode)", "结束\n(END)", "有最终输出"),
+        ("任务规划\n(TaskPlanningNode)", "执行\n(DecisionNode)", ""),
+        ("执行\n(DecisionNode)", "结束\n(END)", "")
     ]
     
     for src, dst, label in edges:
@@ -43,8 +43,8 @@ def create_workflow_graph():
     pos = {
         "意图分析\n(IntentAnalysisNode)": (0, 0),
         "任务规划\n(TaskPlanningNode)": (0, -2),
-        "执行\n(ExecutionNode)": (0, -4),
-        "工具执行\n(ToolExecutionNode)": (3, -1),
+        "执行\n(DecisionNode)": (0, -4),
+        "工具执行\n(ToolDecisionNode)": (3, -1),
         "结束\n(END)": (1.5, -6)
     }
     

@@ -7,7 +7,6 @@ import json
 import uuid
 import inspect
 import time
-from ..utils.logger import log_tool_activity
 
 class BaseTool(ABC):
     """工具基类，所有工具需要继承此类"""
@@ -44,7 +43,7 @@ class BaseTool(ABC):
         pass
     
     async def execute(self, **kwargs) -> Any:
-        """执行工具操作，添加日志记录功能
+        """执行工具操作
         
         Args:
             **kwargs: 工具参数
@@ -52,46 +51,7 @@ class BaseTool(ABC):
         Returns:
             执行结果
         """
-        # 记录工具执行开始
-        start_time = time.time()
-        log_tool_activity(self.name, "执行开始", kwargs)
-        
-        try:
-            # 执行工具操作
-            result = await self._execute(**kwargs)
-            
-            # 计算执行时间
-            execution_time = time.time() - start_time
-            
-            # 记录工具执行成功
-            log_tool_activity(
-                self.name, 
-                "执行成功", 
-                {
-                    "parameters": kwargs,
-                    "execution_time": f"{execution_time:.4f}秒"
-                }, 
-                result
-            )
-            
-            return result
-        except Exception as e:
-            # 计算执行时间
-            execution_time = time.time() - start_time
-            
-            # 记录工具执行失败
-            log_tool_activity(
-                self.name, 
-                "执行失败", 
-                {
-                    "parameters": kwargs,
-                    "execution_time": f"{execution_time:.4f}秒",
-                    "error": str(e)
-                }
-            )
-            
-            # 重新抛出异常
-            raise
+        return await self._execute(**kwargs)
     
     def to_schema(self) -> Dict[str, Any]:
         """将工具转换为schema格式

@@ -9,7 +9,6 @@ from ..models.state import ExpenseState, ToolCall
 from ..tool.registry import tool_registry
 from ..config import get_llm
 from ..prompts.memory_prompt import prompt as memory_prompt
-from ..utils.logger import log_node_activity, log_error, log_node_entry, log_node_exit
 from langchain_core.messages import SystemMessage, HumanMessage
 
 class IntentAnalysisNode:
@@ -23,34 +22,6 @@ class IntentAnalysisNode:
         """
         self.model_name = model_name
     
-    def _add_log_entry(self, state: ExpenseState, action: str, details: Dict[str, Any]) -> None:
-        """添加日志条目
-        
-        Args:
-            state: 当前状态
-            action: 执行的动作
-            details: 详细信息
-        """
-        if "execution_log" not in state:
-            state["execution_log"] = []
-        
-        # 获取当前时间戳
-        timestamp = str(state.get("updated_at", datetime.now()))
-        
-        # 创建日志条目
-        log_entry = {
-            "node": "intent_analysis",
-            "action": action,
-            "timestamp": timestamp,
-            "details": details
-        }
-        
-        # 添加日志到状态
-        state["execution_log"].append(log_entry)
-        
-        # 同时记录到文件日志
-        log_node_activity("intent_analysis", action, details)
-    
     def __call__(self, state: ExpenseState) -> ExpenseState:
         """处理用户输入，识别意图和工具调用
         
@@ -60,67 +31,14 @@ class IntentAnalysisNode:
         Returns:
             更新后的状态
         """
-        # 记录节点开始执行
-        state_id = state.get("id", "unknown")
-        start_time = time.time()
-        log_node_entry("intent_analysis", state_id, {
-            "user_input": state.get("user_input", ""),
-            "context_keys": list(state.get("context", {}).keys())
-        })
-        
         try:
-            # 记录开始处理
-            self._add_log_entry(
-                state,
-                "开始意图分析",
-                {"message": "开始分析用户输入"}
-            )
-            
             # 获取用户输入
             user_input = state.get("user_input", "")
             if not user_input:
-                # 记录错误
-                self._add_log_entry(
-                    state,
-                    "输入验证失败",
-                    {"error": "缺少用户输入"}
-                )
-                
-                # 记录节点执行完成（失败）
-                execution_time = time.time() - start_time
-                log_node_exit("intent_analysis", state_id, execution_time, {
-                    "status": "error",
-                    "reason": "missing_user_input",
-                    "execution_time": f"{execution_time:.4f}秒"
-                })
-                
-                # 如果没有用户输入，返回错误
-                updated_state = state.copy()
-                updated_state["errors"] = ["缺少用户输入"]
-                return updated_state
-            
-            # 记录用户输入
-            self._add_log_entry(
-                state,
-                "获取用户输入",
-                {
-                    "input_length": len(user_input),
-                    "input_preview": user_input[:100] + "..." if len(user_input) > 100 else user_input
-                }
-            )
+                return state.copy()
             
             # 获取可用工具
             tools = tool_registry.get_all_schemas()
-            
-            # 记录工具信息
-            self._add_log_entry(
-                state,
-                "获取可用工具",
-                {
-                    "tools_count": len(tools),
-                    "tools": [tool["name"] for tool in tools]
-                }
-            )
             
             # 使用工具列表构建系统提示
             system_prompt = self._build_system_prompt(tools)
@@ -128,59 +46,11 @@ class IntentAnalysisNode:
             # 构建用户提示
             user_prompt = self._build_user_prompt(user_input)
             
-            # 记录提示构建完成
-            self._add_log_entry(
-                state,
-                "构建提示完成",
-                {
-                    "system_prompt_length": len(system_prompt),
-                    "user_prompt_length": len(user_prompt)
-                }
-            )
-            
-            # 记录LLM调用开始
-            llm_call_start_time = time.time()
-            self._add_log_entry(
-                state,
-                "调用大模型",
-                {
-                    "model": self.model_name,
-                    "system_prompt_length": len(system_prompt),
-                    "user_prompt_length": len(user_prompt)
-                }
-            )
-            
             # 调用LLM获取回复
             response = self._call_llm(system_prompt, user_prompt)
             
-            # 计算LLM调用执行时间
-            llm_execution_time = time.time() - llm_call_start_time
-            
-            # 记录LLM响应
-            self._add_log_entry(
-                state,
-                "大模型分析完成",
-                {
-                    "response_type": type(response).__name__,
-                    "has_intent": "intent" in response if isinstance(response, dict) else False,
-                    "has_tool_calls": "tool_calls" in response if isinstance(response, dict) else False,
-                    "execution_time": f"{llm_execution_time:.4f}秒"
-                }
-            )
-            
             # 解析意图和工具调用
             intent, tool_calls = self._parse_response(response)
-            
-            # 记录解析结果
-            self._add_log_entry(
-                state,
-                "解析意图和工具调用",
-                {
-                    "intent_type": type(intent).__name__,
-                    "tool_calls_count": len(tool_calls) if tool_calls else 0,
-                    "tool_names": [tc.get("name") for tc in tool_calls] if tool_calls else []
-                }
-            )
             
             # 更新状态
             updated_state = state.copy()
@@ -193,61 +63,10 @@ class IntentAnalysisNode:
             # 更新时间戳
             updated_state["updated_at"] = datetime.now()
             
-            # 记录完成
-            self._add_log_entry(
-                updated_state,
-                "意图分析完成",
-                {
-                    "intent": intent,
-                    "tool_calls_count": len(tool_calls) if tool_calls else 0,
-                    "success": True
-                }
-            )
-            
-            # 记录节点执行完成
-            execution_time = time.time() - start_time
-            log_node_exit("intent_analysis", state_id, execution_time, {
-                "status": "completed",
-                "intent_type": type(intent).__name__,
-                "tool_calls_count": len(tool_calls) if tool_calls else 0,
-                "execution_time": f"{execution_time:.4f}秒"
-            })
-            
             return updated_state
             
         except Exception as e:
-            # 记录错误
-            error_message = str(e)
-            log_error("intent_analysis", "意图分析过程中发生未捕获的异常", {"error": error_message, "user_input": state.get("user_input", "")})
-            
-            self._add_log_entry(
-                state,
-                "意图分析失败",
-                {
-                    "error": error_message,
-                    "success": False
-                }
-            )
-            
-            # 记录节点执行完成（错误）
-            execution_time = time.time() - start_time
-            log_node_exit("intent_analysis", state_id, execution_time, {
-                "status": "error",
-                "error": error_message,
-                "execution_time": f"{execution_time:.4f}秒"
-            })
-            
-            # 出错时返回错误状态
-            updated_state = state.copy()
-            if "errors" not in updated_state:
-                updated_state["errors"] = []
-            updated_state["errors"].append({
-                "node": "intent_analysis",
-                "error": error_message,
-                "timestamp": datetime.now().isoformat()
-            })
-            
-            return updated_state
+            return state.copy()
     
     def _build_system_prompt(self, tools: List[Dict[str, Any]]) -> str:
         """构建系统提示
@@ -420,7 +239,7 @@ class IntentAnalysisNode:
             # 构建消息
             messages = [
                 SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
+                HumanMessage(content=user_prompt+"/no_think")
             ]
             
             # 调用LLM

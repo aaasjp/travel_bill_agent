@@ -5,9 +5,6 @@
 from typing import Dict, Any, List, Optional
 import time
 
-# 导入自定义日志工具
-from ..utils.logger import log_tool_activity, log_error, log_tool_execution
-
 # 导入基类
 from .base import BaseTool
 
@@ -27,15 +24,6 @@ class ToolRegistry:
             raise ValueError("工具必须有名称")
         
         self._tools[tool_instance.name] = tool_instance
-        log_tool_activity(
-            tool_instance.name, 
-            "注册", 
-            {
-                "description": tool_instance.description,
-                "parameters": tool_instance.parameters,
-                "timestamp": time.time()
-            }
-        )
     
     def get_tool(self, name: str) -> Optional[BaseTool]:
         """获取工具
@@ -92,69 +80,11 @@ class ToolRegistry:
         """
         tool = self.get_tool(name)
         if not tool:
-            error_msg = f"工具 '{name}' 不存在"
-            log_error("工具执行", error_msg, {"requested_tool": name, "available_tools": list(self._tools.keys())})
-            raise ValueError(error_msg)
-        
-        # 记录执行开始时间
-        start_time = time.time()
+            raise ValueError(f"工具 '{name}' 不存在")
         
         try:
-            # 记录开始执行
-            log_tool_activity(name, "执行开始", parameters)
-            
-            # 执行工具
-            result = await tool.execute(**parameters)
-            
-            # 计算执行时间
-            execution_time = time.time() - start_time
-            
-            # 记录详细执行信息
-            log_tool_execution(
-                name,
-                parameters,
-                execution_time,
-                success=True,
-                result=result
-            )
-            
-            # 记录执行成功
-            log_tool_activity(
-                name, 
-                "执行成功", 
-                {
-                    "parameters": parameters,
-                    "execution_time": f"{execution_time:.4f}秒"
-                }, 
-                result
-            )
-            
-            return result
+            return await tool.execute(**parameters)
         except Exception as e:
-            # 计算执行时间
-            execution_time = time.time() - start_time
-            
-            # 记录详细执行信息
-            log_tool_execution(
-                name,
-                parameters,
-                execution_time,
-                success=False,
-                error=str(e)
-            )
-            
-            # 记录错误信息
-            error_msg = f"执行工具 '{name}' 时出错: {str(e)}"
-            log_error(
-                "工具执行", 
-                error_msg, 
-                {
-                    "tool": name, 
-                    "parameters": parameters,
-                    "execution_time": f"{execution_time:.4f}秒"
-                }
-            )
-            
             raise
 
 # 创建工具注册表实例
@@ -164,41 +94,41 @@ tool_registry = ToolRegistry()
 try:
     from .invoice_processing_tool import InvoiceProcessingTool
     tool_registry.register_tool(InvoiceProcessingTool())
-except Exception as e:
-    log_error("工具注册", f"无法注册 InvoiceProcessingTool: {str(e)}")
+except Exception:
+    pass
 
 try:
     from .expense_record_management_tool import ExpenseRecordManagementTool
     tool_registry.register_tool(ExpenseRecordManagementTool())
-except Exception as e:
-    log_error("工具注册", f"无法注册 ExpenseRecordManagementTool: {str(e)}")
+except Exception:
+    pass
 
 try:
     from .reimbursement_management_tool import ReimbursementManagementTool
     tool_registry.register_tool(ReimbursementManagementTool())
-except Exception as e:
-    log_error("工具注册", f"无法注册 ReimbursementManagementTool: {str(e)}")
+except Exception:
+    pass
 
 try:
     from .reimbursement_submission_tool import ReimbursementSubmissionTool
     tool_registry.register_tool(ReimbursementSubmissionTool())
-except Exception as e:
-    log_error("工具注册", f"无法注册 ReimbursementSubmissionTool: {str(e)}")
+except Exception:
+    pass
 
 try:
     from .status_query_tool import StatusQueryTool
     tool_registry.register_tool(StatusQueryTool())
-except Exception as e:
-    log_error("工具注册", f"无法注册 StatusQueryTool: {str(e)}")
+except Exception:
+    pass
 
 try:
     from .travel_application_query_tool import TravelApplicationQueryTool
     tool_registry.register_tool(TravelApplicationQueryTool())
-except Exception as e:
-    log_error("工具注册", f"无法注册 TravelApplicationQueryTool: {str(e)}")
+except Exception:
+    pass
 
 try:
     from .allowance_processing_tool import AllowanceProcessingTool
     tool_registry.register_tool(AllowanceProcessingTool())
-except Exception as e:
-    log_error("工具注册", f"无法注册 AllowanceProcessingTool: {str(e)}") 
+except Exception:
+    pass 

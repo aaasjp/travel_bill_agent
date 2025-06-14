@@ -10,7 +10,6 @@ from enum import Enum
 from datetime import datetime
 
 from ..models.state import ExpenseState
-from ..utils.logger import log_node_activity, log_error, log_node_entry, log_node_exit
 
 # 介入优先级枚举
 class InterventionPriority(str, Enum):
@@ -29,67 +28,25 @@ class InterventionType(str, Enum):
 
 class HumanInterventionNode:
     """
-    人工干预节点，用于判断任务是否需要人工干预并等待反馈。
+    人工干预节点，负责判断是否需要人工干预，并处理人工反馈。
     
-    该节点基于反思节点的结果和执行状态，决定是否需要中断工作流并等待人工反馈。
-    人工干预可能是由于重复执行工具、执行错误或其他需要人工判断的情况触发的。
-    
-    优化内容:
-    1. 优先级管理：紧急、重要、一般三级优先级
-    2. 介入类型分类：信息补充、决策确认、异常处理、权限授予
-    3. 多渠道通知策略：支持多种通知方式
-    4. 决策学习机制：记录和学习用户决策模式
+    该节点会根据当前状态判断是否需要人工干预，如果需要，则等待人工反馈。
+    人工反馈可以是继续执行、重新规划、修改状态或结束任务等。
     """
     
     def __init__(self):
         """初始化人工干预节点"""
-        # 存储等待人工干预的任务
-        self.pending_tasks = {}
-        
-        # 决策历史记录，用于学习用户决策模式
-        self.decision_history = []
-        
-        # 通知渠道配置
         self.notification_channels = {
-            InterventionPriority.URGENT: ["system", "email", "mobile", "im"],
-            InterventionPriority.IMPORTANT: ["system", "email", "im"],
-            InterventionPriority.NORMAL: ["system"]
+            "urgent": ["email", "sms", "wechat"],
+            "important": ["email", "wechat"],
+            "normal": ["email"]
         }
         
-        # 超时配置（秒）
         self.timeout_config = {
-            InterventionPriority.URGENT: 30 * 60,  # 30分钟
-            InterventionPriority.IMPORTANT: 4 * 60 * 60,  # 4小时
-            InterventionPriority.NORMAL: 24 * 60 * 60  # 24小时
+            "urgent": 300,  # 5分钟
+            "important": 3600,  # 1小时
+            "normal": 86400  # 24小时
         }
-    
-    def _add_log_entry(self, state: ExpenseState, action: str, details: Dict[str, Any]) -> None:
-        """添加日志条目
-        
-        Args:
-            state: 当前状态
-            action: 执行的动作
-            details: 详细信息
-        """
-        if "execution_log" not in state:
-            state["execution_log"] = []
-        
-        # 获取当前时间戳
-        timestamp = str(state.get("updated_at", time.time()))
-        
-        # 创建日志条目
-        log_entry = {
-            "node": "human_intervention",
-            "action": action,
-            "timestamp": timestamp,
-            "details": details
-        }
-        
-        # 添加日志到状态
-        state["execution_log"].append(log_entry)
-        
-        # 同时记录到文件日志
-        log_node_activity("human_intervention", action, details)
     
     def _determine_intervention_type(self, state: ExpenseState) -> InterventionType:
         """确定介入类型
@@ -202,19 +159,6 @@ class HumanInterventionNode:
                 tool_calls_count += 1
         excessive_tool_calls = tool_calls_count > 10  # 如果工具调用超过10次，考虑人工干预
         
-        # 检查任务完成率停滞
-        completion_rate_stalled = False
-        reflection_history = []
-        for entry in execution_log:
-            if entry.get("node") == "reflection" and "completion_rate" in entry.get("details", {}):
-                reflection_history.append(entry.get("details", {}).get("completion_rate", 0))
-        
-        # 如果有多次反思且完成率长时间没有提高
-        if len(reflection_history) >= 3:
-            recent_rates = reflection_history[-3:]
-            if max(recent_rates) - min(recent_rates) < 0.1:  # 如果最近三次完成率变化小于0.1
-                completion_rate_stalled = True
-        
         # 检查是否有限额超出
         has_limit_exceeded = False
         for entry in execution_log:
@@ -234,8 +178,7 @@ class HumanInterventionNode:
                 has_errors or 
                 excessive_steps or 
                 excessive_tool_calls or 
-                completion_rate_stalled or
-                has_limit_exceeded or
+                has_limit_exceeded or 
                 has_compliance_risk)
     
     def _create_intervention_options(self, state: ExpenseState, intervention_type: InterventionType) -> List[Dict[str, Any]]:
@@ -468,12 +411,7 @@ class HumanInterventionNode:
         for channel in channels:
             if self._should_send_notification(channel, priority):
                 # 这里实际应用中会调用外部通知服务
-                log_node_activity("human_intervention", f"发送{channel}通知", {
-                    "task_id": task_id,
-                    "priority": priority,
-                    "channel": channel,
-                    "timestamp": time.time()
-                })
+                pass
     
     def _learn_from_decision(self, request: Dict[str, Any], response: Dict[str, Any]) -> None:
         """从用户决策中学习
@@ -502,24 +440,6 @@ class HumanInterventionNode:
         Returns:
             更新后的状态
         """
-        # 记录节点开始执行
-        state_id = state.get("task_id", "unknown")
-        start_time = time.time()
-        log_node_entry("human_intervention", state_id, {
-            "user_input": state.get("user_input", ""),
-            "intent": state.get("intent", {}),
-            "plan_steps": len(state.get("plan", [])),
-            "execution_log_entries": len(state.get("execution_log", [])),
-            "has_errors": len(state.get("errors", [])) > 0
-        })
-        
-        # 记录开始人工干预判断
-        self._add_log_entry(
-            state,
-            "开始人工干预判断",
-            {"message": "开始判断是否需要人工干预"}
-        )
-        
         try:
             # 判断是否需要人工干预
             needs_intervention = self._should_request_intervention(state)
@@ -546,53 +466,11 @@ class HumanInterventionNode:
                 # 发送通知
                 self._send_notifications(intervention_request)
                 
-                # 记录需要人工干预
-                self._add_log_entry(
-                    state,
-                    "需要人工干预",
-                    {
-                        "request_id": task_id,
-                        "intervention_type": intervention_request.get("intervention_type"),
-                        "intervention_priority": intervention_request.get("intervention_priority"),
-                        "reason": intervention_request.get("rationale", ""),
-                        "detected_repetition": intervention_request.get("detected_repetition", False),
-                        "has_errors": len(intervention_request.get("errors", [])) > 0,
-                        "recommended_action": recommended_action
-                    }
-                )
-                
                 # 设置任务状态为等待人工干预
                 state["status"] = "waiting_for_human"
                 
                 # 设置干预响应为空
                 state["intervention_response"] = None
-                
-                # 记录节点执行完成
-                execution_time = time.time() - start_time
-                log_node_exit("human_intervention", state_id, execution_time, {
-                    "status": "waiting_for_human",
-                    "reason": "需要人工干预",
-                    "intervention_type": intervention_request.get("intervention_type"),
-                    "intervention_priority": intervention_request.get("intervention_priority"),
-                    "execution_time": f"{execution_time:.4f}秒"
-                })
-            else:
-                # 记录不需要人工干预
-                self._add_log_entry(
-                    state,
-                    "不需要人工干预",
-                    {
-                        "message": "任务执行正常，不需要人工干预"
-                    }
-                )
-                
-                # 记录节点执行完成
-                execution_time = time.time() - start_time
-                log_node_exit("human_intervention", state_id, execution_time, {
-                    "status": "completed",
-                    "reason": "不需要人工干预",
-                    "execution_time": f"{execution_time:.4f}秒"
-                })
             
             return state
             
@@ -606,32 +484,6 @@ class HumanInterventionNode:
                 "node": "human_intervention",
                 "error": error_message,
                 "timestamp": str(state.get("updated_at", time.time()))
-            })
-            
-            # 记录错误日志
-            self._add_log_entry(
-                state,
-                "人工干预判断失败",
-                {
-                    "error": error_message
-                }
-            )
-            
-            # 记录详细错误日志
-            log_error(
-                "human_intervention",
-                "人工干预判断过程中发生未捕获的异常",
-                {
-                    "error": error_message
-                }
-            )
-            
-            # 记录节点执行完成（错误）
-            execution_time = time.time() - start_time
-            log_node_exit("human_intervention", state_id, execution_time, {
-                "status": "error",
-                "error": error_message,
-                "execution_time": f"{execution_time:.4f}秒"
             })
             
             return state
@@ -659,17 +511,5 @@ class HumanInterventionNode:
         
         # 学习用户决策
         self._learn_from_decision(request, feedback)
-        
-        # 记录人工反馈
-        log_node_activity(
-            "human_intervention",
-            "收到人工反馈",
-            {
-                "task_id": task_id,
-                "feedback": feedback,
-                "intervention_type": request.get("intervention_type"),
-                "intervention_priority": request.get("intervention_priority")
-            }
-        )
         
         return request 

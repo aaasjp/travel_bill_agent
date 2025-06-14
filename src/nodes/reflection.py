@@ -9,7 +9,6 @@ import json
 
 from ..models.state import ExpenseState
 from ..config import get_llm
-from ..utils.logger import log_node_activity, log_error, log_node_entry, log_node_exit
 
 class ReflectionNode:
     """
@@ -77,34 +76,6 @@ class ReflectionNode:
         # 构建反思链
         self.chain = self.reflection_prompt | self.llm | self.parser
     
-    def _add_log_entry(self, state: ExpenseState, action: str, details: Dict[str, Any]) -> None:
-        """添加日志条目
-        
-        Args:
-            state: 当前状态
-            action: 执行的动作
-            details: 详细信息
-        """
-        if "execution_log" not in state:
-            state["execution_log"] = []
-        
-        # 获取当前时间戳
-        timestamp = str(state.get("updated_at", time.time()))
-        
-        # 创建日志条目
-        log_entry = {
-            "node": "reflection",
-            "action": action,
-            "timestamp": timestamp,
-            "details": details
-        }
-        
-        # 添加日志到状态
-        state["execution_log"].append(log_entry)
-        
-        # 同时记录到文件日志
-        log_node_activity("reflection", action, details)
-    
     def _analyze_tool_call_history(self, state: ExpenseState) -> Dict[str, Any]:
         """分析工具调用历史，检测重复模式
         
@@ -168,42 +139,14 @@ class ReflectionNode:
         Returns:
             更新后的状态
         """
-        # 记录节点开始执行
-        state_id = state.get("id", "unknown")
-        start_time = time.time()
-        log_node_entry("reflection", state_id, {
-            "user_input": state.get("user_input", ""),
-            "intent": state.get("intent", {}),
-            "plan_steps": len(state.get("plan", [])),
-            "execution_log_entries": len(state.get("execution_log", [])),
-            "has_errors": len(state.get("errors", [])) > 0
-        })
-        
-        # 记录开始反思
-        self._add_log_entry(
-            state,
-            "开始反思分析",
-            {"message": "开始分析执行情况和任务完成度"}
-        )
-        
         try:
             # 分析工具调用历史
             tool_history_analysis = self._analyze_tool_call_history(state)
             
             # 如果检测到重复调用工具且至少循环了3次，强制结束任务
             if tool_history_analysis["repetition_detected"] and tool_history_analysis["tool_call_count"] >= 6:
-                self._add_log_entry(
-                    state,
-                    "检测到重复工具调用",
-                    {
-                        "repeated_tools": tool_history_analysis["repeated_tools"],
-                        "action": "强制结束任务"
-                    }
-                )
-                
                 # 创建反思结果
                 reflection_result = {
-                    "task_completion_rate": 0.95,  # 假设任务基本完成
                     "success_aspects": ["成功创建了报销单"],
                     "missing_aspects": ["可能有部分细节未完善"],
                     "detected_repetition": True,
@@ -216,51 +159,17 @@ class ReflectionNode:
                 state["reflection_result"] = reflection_result
                 state["final_output"] = reflection_result["final_output"]
                 
-                # 记录设置最终输出
-                self._add_log_entry(
-                    state,
-                    "设置最终输出",
-                    {
-                        "final_output_length": len(reflection_result["final_output"]),
-                        "reason": "检测到重复工具调用"
-                    }
-                )
-                
                 # 更新反思记录
                 if "reflection" not in state:
                     state["reflection"] = {}
                     
                 state["reflection"] = {
-                    "task_completion_rate": reflection_result["task_completion_rate"],
                     "success_aspects": reflection_result["success_aspects"],
                     "missing_aspects": reflection_result["missing_aspects"],
                     "action": reflection_result["action"],
+                    "detected_repetition": True,
                     "timestamp": str(state.get("updated_at", time.time()))
                 }
-                
-                # 记录反思日志
-                self._add_log_entry(
-                    state,
-                    "执行反思分析",
-                    {
-                        "completion_rate": reflection_result["task_completion_rate"],
-                        "next_action": reflection_result["action"],
-                        "success_aspects_count": len(reflection_result["success_aspects"]),
-                        "missing_aspects_count": len(reflection_result["missing_aspects"]),
-                        "detected_repetition": True
-                    }
-                )
-                
-                # 记录节点执行完成
-                execution_time = time.time() - start_time
-                log_node_exit("reflection", state_id, execution_time, {
-                    "status": "completed",
-                    "completion_rate": reflection_result["task_completion_rate"],
-                    "next_action": reflection_result["action"],
-                    "has_final_output": True,
-                    "execution_time": f"{execution_time:.4f}秒",
-                    "detected_repetition": True
-                })
                 
                 return state
             
@@ -276,41 +185,12 @@ class ReflectionNode:
                 "task_completion_rate": state.get("reflection", {}).get("task_completion_rate", 0)
             }
             
-            # 记录LLM调用开始
-            llm_call_start_time = time.time()
-            self._add_log_entry(
-                state,
-                "调用大模型",
-                {
-                    "input_keys": list(inputs.keys()),
-                    "input_intent_length": len(json.dumps(inputs["intent"], ensure_ascii=False)),
-                    "input_plan_length": len(json.dumps(inputs["plan"], ensure_ascii=False)),
-                    "input_log_length": len(json.dumps(inputs["execution_log"][-5:] if len(inputs["execution_log"]) > 5 else inputs["execution_log"], ensure_ascii=False))
-                }
-            )
-            
             # 执行反思分析
             try:
                 reflection_result = await self.chain.ainvoke(inputs)
                 
-                # 计算LLM调用执行时间
-                llm_execution_time = time.time() - llm_call_start_time
-                
                 # 检查是否检测到重复
                 detected_repetition = reflection_result.get("detected_repetition", False)
-                
-                # 记录LLM响应
-                self._add_log_entry(
-                    state,
-                    "大模型反思完成",
-                    {
-                        "result_keys": list(reflection_result.keys()),
-                        "completion_rate": reflection_result.get("task_completion_rate", 0),
-                        "action": reflection_result.get("action", "end"),
-                        "detected_repetition": detected_repetition,
-                        "execution_time": f"{llm_execution_time:.4f}秒"
-                    }
-                )
                 
                 # 检查已执行步骤数量与任务完成度的关系
                 if "executed_steps_count" in state and "plan" in state and state["plan"]:
@@ -361,35 +241,10 @@ class ReflectionNode:
                                 missed_ratio = len(missed_steps) / total_steps
                                 adjusted_rate = max(0.5, 1.0 - missed_ratio) 
                                 reflection_result["task_completion_rate"] = adjusted_rate
-                            
-                            # 记录要重新执行的步骤
-                            self._add_log_entry(
-                                state,
-                                "安排执行遗漏步骤",
-                                {
-                                    "missed_steps": missed_steps,
-                                    "missed_steps_count": len(missed_steps),
-                                    "original_action": original_action,
-                                    "adjusted_action": "continue",
-                                    "adjusted_completion_rate": reflection_result.get("task_completion_rate", 0),
-                                    "missing_step_descriptions": missing_step_descriptions
-                                }
-                            )
+                        
                         # 如果没有遗漏步骤且执行率为100%，考虑将完成率调整为100%
                         elif not missed_steps and execution_ratio == 1.0 and reflection_result.get("task_completion_rate", 0) < 1.0:
                             reflection_result["task_completion_rate"] = 1.0
-                            self._add_log_entry(
-                                state,
-                                "调整任务完成率",
-                                {
-                                    "原始完成率": reflection_result.get("task_completion_rate", 0),
-                                    "调整后完成率": 1.0,
-                                    "执行率": execution_ratio,
-                                    "已执行步骤": executed_steps,
-                                    "总步骤": total_steps,
-                                    "调整原因": "已执行全部计划步骤，将完成率调整为100%"
-                                }
-                            )
                     
                     # 如果执行率超过80%，但完成率评估低于0.7，调整完成率但不超过0.9
                     if execution_ratio >= 0.8 and reflection_result.get("task_completion_rate", 0) < 0.7:
@@ -397,20 +252,6 @@ class ReflectionNode:
                         # 根据执行率调整完成率，但最高不超过0.9
                         adjusted_rate = min(0.9, max(original_rate, 0.7))
                         reflection_result["task_completion_rate"] = adjusted_rate
-                        
-                        # 记录调整过程
-                        self._add_log_entry(
-                            state,
-                            "调整任务完成率",
-                            {
-                                "原始完成率": original_rate,
-                                "调整后完成率": adjusted_rate,
-                                "执行率": execution_ratio,
-                                "已执行步骤": executed_steps,
-                                "总步骤": total_steps,
-                                "调整原因": "已执行大部分计划步骤，但完成率评估偏低，调整但不超过0.9"
-                            }
-                        )
                     
                     # 如果已执行全部步骤且评估为replan，检查完成率
                     if state.get("steps_completed", False) and reflection_result.get("action") == "replan":
@@ -422,18 +263,6 @@ class ReflectionNode:
                                 original_action = reflection_result["action"]
                                 reflection_result["action"] = "continue"
                                 reflection_result["rationale"] = f"虽然计划步骤已全部执行过，但仍有 {len(state['missed_steps'])} 个步骤未执行或需要重新执行，安排执行这些遗漏步骤。原建议为'{original_action}'。"
-                                
-                                self._add_log_entry(
-                                    state,
-                                    "调整反思结果",
-                                    {
-                                        "原始动作": original_action,
-                                        "调整后动作": "continue",
-                                        "完成率": reflection_result.get("task_completion_rate", 0),
-                                        "执行率": execution_ratio,
-                                        "调整原因": "有遗漏步骤需要执行"
-                                    }
-                                )
                         else:
                             # 所有步骤都已执行，检查完成率是否达到100%
                             completion_rate = reflection_result.get("task_completion_rate", 0)
@@ -448,37 +277,9 @@ class ReflectionNode:
                                     # 如果没有最终输出，生成一个
                                     if "final_output" not in reflection_result or not reflection_result["final_output"]:
                                         reflection_result["final_output"] = f"已完成任务，执行了{executed_steps}/{total_steps}个步骤，完成率{completion_rate:.2f}。"
-                                    
-                                    self._add_log_entry(
-                                        state,
-                                        "调整反思结果",
-                                        {
-                                            "原始动作": original_action,
-                                            "调整后动作": "end",
-                                            "完成率": completion_rate,
-                                            "执行率": execution_ratio,
-                                            "调整原因": "已执行全部步骤且完成率达到100%，无明确缺失方面"
-                                        }
-                                    )
             except Exception as parse_error:
                 # 捕获反思分析过程中的错误
                 parse_error_message = str(parse_error)
-                log_error(
-                    "reflection",
-                    f"反思分析解析失败: {parse_error_message}",
-                    {
-                        "inputs_keys": list(inputs.keys()),
-                        "execution_time": f"{time.time() - llm_call_start_time:.4f}秒"
-                    }
-                )
-                
-                # 尝试保存调试信息
-                try:
-                    with open('debug_reflection_inputs.json', 'w', encoding='utf-8') as f:
-                        json.dump(inputs, f, ensure_ascii=False, indent=2)
-                    log_error("reflection", "已保存反思输入到文件", {"file": "debug_reflection_inputs.json"})
-                except Exception:
-                    pass
                 
                 # 创建默认的反思结果
                 action = "replan" if state.get("steps_completed", False) else "continue"
@@ -492,18 +293,6 @@ class ReflectionNode:
                     "rationale": f"反思分析失败: {parse_error_message}，建议{action}以尝试完成任务",
                     "final_output": None
                 }
-                
-                # 记录使用默认反思结果
-                self._add_log_entry(
-                    state,
-                    "使用默认反思结果",
-                    {
-                        "原因": "反思分析失败",
-                        "错误": parse_error_message,
-                        "动作": action,
-                        "steps_completed": state.get("steps_completed", False)
-                    }
-                )
             
             # 如果检测到重复且建议继续，改为结束任务
             if detected_repetition and reflection_result.get("action") == "continue":
@@ -525,15 +314,6 @@ class ReflectionNode:
             # 如果任务已完成，设置最终输出
             if reflection_result.get("action") == "end" and "final_output" in reflection_result:
                 state["final_output"] = reflection_result["final_output"]
-                
-                # 记录设置最终输出
-                self._add_log_entry(
-                    state,
-                    "设置最终输出",
-                    {
-                        "final_output_length": len(reflection_result["final_output"])
-                    }
-                )
             
             # 更新反思记录
             if "reflection" not in state:
@@ -548,30 +328,6 @@ class ReflectionNode:
                 "timestamp": str(state.get("updated_at", time.time()))
             }
             
-            # 记录反思日志
-            self._add_log_entry(
-                state,
-                "执行反思分析",
-                {
-                    "completion_rate": reflection_result.get("task_completion_rate", 0),
-                    "next_action": reflection_result.get("action", "end"),
-                    "success_aspects_count": len(reflection_result.get("success_aspects", [])),
-                    "missing_aspects_count": len(reflection_result.get("missing_aspects", [])),
-                    "detected_repetition": detected_repetition
-                }
-            )
-            
-            # 记录节点执行完成
-            execution_time = time.time() - start_time
-            log_node_exit("reflection", state_id, execution_time, {
-                "status": "completed",
-                "completion_rate": reflection_result.get("task_completion_rate", 0),
-                "next_action": reflection_result.get("action", "end"),
-                "has_final_output": "final_output" in reflection_result,
-                "execution_time": f"{execution_time:.4f}秒",
-                "detected_repetition": detected_repetition
-            })
-            
             return state
             
         except Exception as e:
@@ -584,32 +340,6 @@ class ReflectionNode:
                 "node": "reflection",
                 "error": error_message,
                 "timestamp": str(state.get("updated_at", time.time()))
-            })
-            
-            # 记录错误日志
-            self._add_log_entry(
-                state,
-                "反思分析失败",
-                {
-                    "error": error_message
-                }
-            )
-            
-            # 记录详细错误日志
-            log_error(
-                "reflection",
-                "反思过程中发生未捕获的异常",
-                {
-                    "error": error_message
-                }
-            )
-            
-            # 记录节点执行完成（错误）
-            execution_time = time.time() - start_time
-            log_node_exit("reflection", state_id, execution_time, {
-                "status": "error",
-                "error": error_message,
-                "execution_time": f"{execution_time:.4f}秒"
             })
             
             return state 

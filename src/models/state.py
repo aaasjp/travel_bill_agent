@@ -65,8 +65,7 @@ class ExpenseState(TypedDict, total=False):
     intervention_request: Optional[Dict[str, Any]]  # 人工干预请求
     intervention_response: Optional[Dict[str, Any]]  # 人工干预响应
     intervention_type: Optional[str]  # 介入类型：信息补充、决策确认、异常处理、权限授予
-    intervention_priority: Optional[str]  # 介入优先级：紧急、重要、一般
-    intervention_history: Optional[List[Dict[str, Any]]]  # 历史介入记录
+    intervention_priority: Optional[str]  # 介入优先级
 
 # 初始化函数
 def create_expense_state(
@@ -127,6 +126,5 @@ def create_expense_state(
         "intervention_request": None,
         "intervention_response": None,
         "intervention_type": None,
-        "intervention_priority": None,
-        "intervention_history": []
+        "intervention_priority": None
     } 
