@@ -5,14 +5,13 @@ import uuid
 import time
 from datetime import datetime
 
-from ..models.state import ExpenseState, ToolCall
-from ..tool.registry import tool_registry
+from ..models.state import ExpenseState
 from ..config import get_llm
 from ..prompts.memory_prompt import prompt as memory_prompt
 from langchain_core.messages import SystemMessage, HumanMessage
 
 class IntentAnalysisNode:
-    """意图分析节点，负责分析用户输入并识别意图和工具调用"""
+    """意图分析节点，负责分析用户输入并识别意图"""
     
     def __init__(self, model_name: str = "qwen3-235b-a22b"):
         """初始化意图分析节点
@@ -23,7 +22,7 @@ class IntentAnalysisNode:
         self.model_name = model_name
     
     def __call__(self, state: ExpenseState) -> ExpenseState:
-        """处理用户输入，识别意图和工具调用
+        """处理用户输入，识别意图
         
         Args:
             state: 当前状态
@@ -37,11 +36,8 @@ class IntentAnalysisNode:
             if not user_input:
                 return state.copy()
             
-            # 获取可用工具
-            tools = tool_registry.get_all_schemas()
-            
-            # 使用工具列表构建系统提示
-            system_prompt = self._build_system_prompt(tools)
+            # 构建系统提示
+            system_prompt = self._build_system_prompt()
             
             # 构建用户提示
             user_prompt = self._build_user_prompt(user_input)
@@ -49,16 +45,12 @@ class IntentAnalysisNode:
             # 调用LLM获取回复
             response = self._call_llm(system_prompt, user_prompt)
             
-            # 解析意图和工具调用
-            intent, tool_calls = self._parse_response(response)
+            # 解析意图
+            intent = self._parse_response(response)
             
             # 更新状态
             updated_state = state.copy()
             updated_state["intent"] = intent
-            
-            # 如果识别到工具调用，添加到状态
-            if tool_calls:
-                updated_state["tool_calls"] = tool_calls
             
             # 更新时间戳
             updated_state["updated_at"] = datetime.now()
@@ -68,44 +60,20 @@ class IntentAnalysisNode:
         except Exception as e:
             return state.copy()
     
-    def _build_system_prompt(self, tools: List[Dict[str, Any]]) -> str:
+    def _build_system_prompt(self) -> str:
         """构建系统提示
         
-        Args:
-            tools: 可用工具列表
-            
         Returns:
             系统提示
         """
-        # 构建工具描述
-        tools_desc = ""
-        if tools:
-            tools_desc = "可用工具:\n"
-            for i, tool in enumerate(tools, 1):
-                tools_desc += f"{i}. {tool['name']}: {tool['description']}\n"
-                tools_desc += f"   参数: {json.dumps(tool['parameters'], ensure_ascii=False)}\n\n"
-        
-        return f"""你是一个差旅报销助手，负责理解用户的报销需求并提供帮助。
+        return f"""你是一个差旅报销助手，负责理解用户的需求并提供帮助。
         
 请分析用户输入和用户记忆记录，识别用户的意图。
 
 用户记忆记录:
 {memory_prompt}
 
-可选工具列表:
-{tools_desc}
-
-如果用户请求需要使用工具，请生成工具调用。工具调用格式如下:
-{{
-  "id": "工具调用ID",
-  "name": "工具名称",
-  "arguments": {{
-    "参数1": "值1",
-    "参数2": "值2"
-  }}
-}}
-
-回复格式:
+请始终以JSON格式返回，确保格式正确,回复格式:
 {{
   "intent": {{
     "主要意图": "用户的主要意图",
@@ -113,21 +81,9 @@ class IntentAnalysisNode:
       "关键字段1": "值1",
       "关键字段2": "值2"
     }}
-  }},
-  "tool_calls": [
-    {{
-      "id": "工具调用ID",
-      "name": "工具名称",
-      "arguments": {{
-        "参数1": "值1",
-        "参数2": "值2"
-      }}
-    }}
-  ]
+  }}
 }}
-
-如果不需要使用工具，则不要包含tool_calls字段。
-请始终以JSON格式返回，确保格式正确。"""
+"""
     
     def _build_user_prompt(self, user_input: str) -> str:
         """构建用户提示
@@ -169,8 +125,7 @@ class IntentAnalysisNode:
                         "intent": {
                             "主要意图": user_input_line,
                             "细节": {"原始输入": user_input_line}
-                        },
-                        "tool_calls": []
+                        }
                     }
             
             # 如果无法提取，返回通用错误意图
@@ -178,8 +133,7 @@ class IntentAnalysisNode:
                 "intent": {
                     "主要意图": "处理用户请求",
                     "细节": {"错误": "无法解析用户输入"}
-                },
-                "tool_calls": []
+                }
             }
             
         except Exception as e:
@@ -188,39 +142,29 @@ class IntentAnalysisNode:
                 "intent": {
                     "主要意图": "未知请求",
                     "细节": {"错误": "解析失败"}
-                },
-                "tool_calls": []
+                }
             }
     
-    def _parse_response(self, response: Dict[str, Any]) -> tuple[Any, Optional[List[Dict[str, Any]]]]:
-        """解析LLM响应，提取意图和工具调用
+    def _parse_response(self, response: Dict[str, Any]) -> Any:
+        """解析LLM响应，提取意图
         
         Args:
             response: LLM响应结果
             
         Returns:
-            tuple: (意图, 工具调用列表)
+            意图
         """
         try:
             if isinstance(response, dict):
                 intent = response.get("intent", "")
-                tool_calls = response.get("tool_calls", [])
-                
-                # 确保工具调用格式正确
-                if tool_calls and isinstance(tool_calls, list):
-                    # 为每个工具调用添加ID（如果没有）
-                    for tool_call in tool_calls:
-                        if isinstance(tool_call, dict) and "id" not in tool_call:
-                            tool_call["id"] = str(uuid.uuid4())
-                
-                return intent, tool_calls
+                return intent
             else:
                 # 如果响应不是字典，返回原始响应作为意图
-                return response, []
+                return response
                 
         except Exception as e:
             print(f"解析响应失败: {str(e)}")
-            return response, []
+            return response
     
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
         """调用大语言模型
