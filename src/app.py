@@ -93,17 +93,24 @@ def create_workflow():
     def route_after_decision(state: ExpenseState) -> Union[Literal["tool_execution"], Literal["reflection_node"]]:
         """执行后的路由逻辑
         
-        如果有工具调用，执行工具调用；否则进行反思
+        如果当前步骤需要工具执行，则执行工具；否则进行反思
         """
         # 先检查任务是否已完成
         if state.get("is_complete", False) or state.get("steps_completed", False):
             return "reflection_node"
         
-        # 安全地检查tool_calls是否存在
-        tool_calls = state.get("tool_calls", [])
+        # 获取当前步骤
+        current_step = state.get("current_step", 0)
+        plan = state.get("plan", [])
         
-        if tool_calls:  # 如果工具调用列表非空
-            return "tool_execution"
+        # 检查当前步骤是否存在且包含工具信息
+        if current_step < len(plan):
+            current_step_details = plan[current_step]
+            if isinstance(current_step_details, dict) and "tool" in current_step_details:
+                tool_info = current_step_details["tool"]
+                if isinstance(tool_info, dict) and "name" in tool_info:
+                    return "tool_execution"
+        
         return "reflection_node"
     
     def route_after_tool(state: ExpenseState) -> Union[Literal["decision"], Literal["reflection_node"]]:
@@ -164,7 +171,6 @@ def create_workflow():
     workflow.add_edge(
         "intent_analysis",
          "task_planning"
-      
     )
     
     workflow.add_conditional_edges(
@@ -188,7 +194,7 @@ def create_workflow():
         "decision",
         route_after_decision,
         {
-            "decision": "decision",
+            "tool_execution": "tool_execution",
             "reflection_node": "reflection_node"
         }
     )
