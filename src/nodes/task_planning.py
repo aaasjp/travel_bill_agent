@@ -6,7 +6,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
-from ..models.state import ExpenseState
+from ..states.state import State
 from ..config import get_llm
 from ..tool.registry import tool_registry
 from ..prompts.process_prompt import prompt as business_process_prompt
@@ -142,7 +142,7 @@ class TaskPlanningNode:
         
         return tools_description
     
-    async def __call__(self, state: ExpenseState) -> ExpenseState:
+    async def __call__(self, state: State) -> State:
         """执行任务规划
         
         Args:

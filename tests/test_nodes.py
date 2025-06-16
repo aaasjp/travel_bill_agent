@@ -4,16 +4,16 @@ import json
 import asyncio
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from src.nodes.intent_analysis import IntentAnalysisNode
-from src.models.state import ExpenseState
+from src.nodes.analysis import AnalysisNode
+from src.states.state import State
 from datetime import datetime
 
 async def test_intent_node():
     # 初始化节点
-    intent_node = IntentAnalysisNode()
+    intent_node = AnalysisNode()
     
     # 创建初始状态
-    state = ExpenseState(
+    state = State(
         task_id="test_task",
         user_input="我要申请3月15-17日北京出差的报销",
         intent={},

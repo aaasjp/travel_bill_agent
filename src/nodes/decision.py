@@ -5,7 +5,7 @@ from langchain_core.output_parsers import JsonOutputParser
 import json
 import time
 
-from ..models.state import ExpenseState
+from ..states.state import State
 from ..config import get_llm
 from ..tool.registry import tool_registry
 
@@ -107,7 +107,7 @@ class DecisionNode:
         
         return tools_description, tool_schemas
     
-    async def __call__(self, state: ExpenseState) -> ExpenseState:
+    async def __call__(self, state: State) -> State:
         """执行当前步骤
         
         Args:
@@ -121,35 +121,8 @@ class DecisionNode:
             current_step = state.get("current_step", 0)
             plan = state.get("plan", [])
             
-            # 初始化已执行步骤跟踪
-            if "executed_steps_count" not in state:
-                state["executed_steps_count"] = 0
-                
-            # 初始化已执行步骤列表
-            if "executed_steps" not in state:
-                state["executed_steps"] = []
-                
-            # 初始化遗漏步骤列表
-            if "missed_steps" not in state:
-                state["missed_steps"] = []
-            
-            # 检查是否有来自反思节点的遗漏步骤需要重新执行
-            if "missed_steps_to_execute" in state and state["missed_steps_to_execute"]:
-                # 获取第一个需要重新执行的遗漏步骤
-                missed_step = state["missed_steps_to_execute"][0]
-                current_step = missed_step
-                
-                # 从列表中移除这个步骤
-                state["missed_steps_to_execute"] = state["missed_steps_to_execute"][1:]
-                
-                # 更新当前步骤
-                state["current_step"] = current_step
-            
             # 检查是否还有步骤可执行
             if not plan or current_step >= len(plan):
-                # 标记步骤完成，但不立即结束任务
-                # 让反思节点决定是继续执行、重新规划还是结束任务
-                state["steps_completed"] = True
                 return state
             
             # 获取当前步骤详情
@@ -193,17 +166,6 @@ class DecisionNode:
                     "available_tools": tools_description
                 })
                 
-                # 增加已执行步骤计数
-                state["executed_steps_count"] += 1
-                
-                # 记录已执行的步骤
-                if current_step not in state["executed_steps"]:
-                    state["executed_steps"].append(current_step)
-                
-                # 如果这是之前遗漏的步骤，从遗漏列表中移除
-                if current_step in state["missed_steps"]:
-                    state["missed_steps"].remove(current_step)
-                
             except Exception as e:
                 # 创建基本的执行结果
                 execution_result = {
@@ -214,10 +176,6 @@ class DecisionNode:
                     "next_step": current_step + 1,  # 保持在当前步骤
                     "is_complete": False
                 }
-                
-                # 记录执行失败的步骤
-                if current_step not in state["missed_steps"]:
-                    state["missed_steps"].append(current_step)
             
             # 更新状态
             if "action_taken" not in state:
@@ -238,35 +196,18 @@ class DecisionNode:
             else:
                 state["tool_calls"] = []
             
-            # 检查是否有遗漏步骤需要先执行
-            if "missed_steps_to_execute" in state and state["missed_steps_to_execute"]:
-                # 如果还有遗漏步骤需要执行，那么下一步就是第一个遗漏步骤
-                next_step = state["missed_steps_to_execute"][0]
-                state["current_step"] = next_step
+            # 根据执行结果更新下一步
+            next_step = execution_result.get("next_step", current_step + 1)
+            if next_step == -1:  # 表示任务完成
+                state["is_complete"] = True
+                if "final_output" in execution_result:
+                    state["final_output"] = execution_result["final_output"]
             else:
-                # 根据执行结果更新下一步
-                next_step = execution_result.get("next_step", current_step + 1)
-                if next_step == -1:  # 表示任务完成
-                    state["is_complete"] = True
-                    if "final_output" in execution_result:
-                        state["final_output"] = execution_result["final_output"]
-                else:
-                    state["current_step"] = next_step
+                state["current_step"] = next_step
             
-            # 检查是否完成 - 基于执行的步骤数而不仅仅是当前步骤索引
+            # 检查是否完成
             is_complete = execution_result.get("is_complete", False)
-            
-            # 计算未执行步骤
-            all_steps = set(range(len(plan)))
-            executed_steps_set = set(state["executed_steps"])
-            unexecuted_steps = list(all_steps - executed_steps_set)
-            
-            # 检查是否有遗漏步骤
-            if unexecuted_steps and not state.get("is_complete", False):
-                state["missed_steps"] = unexecuted_steps
-            
-            # 只有当所有步骤都已执行完成时，才考虑标记为完成
-            if is_complete or not unexecuted_steps:
+            if is_complete:
                 state["is_complete"] = True
                 if "final_output" in execution_result:
                     state["final_output"] = execution_result["final_output"]

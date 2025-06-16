@@ -7,7 +7,7 @@ from langchain_core.output_parsers import JsonOutputParser
 import time
 import json
 
-from ..models.state import ExpenseState
+from ..states.state import State
 from ..config import get_llm
 
 class ReflectionNode:
@@ -76,7 +76,7 @@ class ReflectionNode:
         # 构建反思链
         self.chain = self.reflection_prompt | self.llm | self.parser
     
-    def _analyze_tool_call_history(self, state: ExpenseState) -> Dict[str, Any]:
+    def _analyze_tool_call_history(self, state: State) -> Dict[str, Any]:
         """分析工具调用历史，检测重复模式
         
         Args:
@@ -130,7 +130,7 @@ class ReflectionNode:
             "repeated_tools": repeated_tools
         }
     
-    async def __call__(self, state: ExpenseState) -> ExpenseState:
+    async def __call__(self, state: State) -> State:
         """执行反思操作
         
         Args:
@@ -192,97 +192,34 @@ class ReflectionNode:
                 # 检查是否检测到重复
                 detected_repetition = reflection_result.get("detected_repetition", False)
                 
-                # 检查已执行步骤数量与任务完成度的关系
-                if "executed_steps_count" in state and "plan" in state and state["plan"]:
-                    total_steps = len(state["plan"])
-                    executed_steps = state["executed_steps_count"]
-                    execution_ratio = executed_steps / total_steps if total_steps > 0 else 0
-                    
-                    # 如果有执行步骤列表，检查是否有遗漏步骤
-                    if "executed_steps" in state:
-                        executed_steps_set = set(state["executed_steps"])
-                        all_steps = set(range(total_steps))
-                        missed_steps = list(all_steps - executed_steps_set)
-                        
-                        # 无论执行率如何，只要有遗漏步骤，就安排重新执行
-                        if missed_steps and reflection_result.get("action") != "end":
-                            # 更新遗漏步骤列表
-                            state["missed_steps"] = missed_steps
+                # 如果执行率超过80%，但完成率评估低于0.7，调整完成率但不超过0.9
+                if reflection_result.get("task_completion_rate", 0) < 0.7:
+                    original_rate = reflection_result.get("task_completion_rate", 0)
+                    # 根据执行率调整完成率，但最高不超过0.9
+                    adjusted_rate = min(0.9, max(original_rate, 0.7))
+                    reflection_result["task_completion_rate"] = adjusted_rate
+                
+                # 如果已执行全部步骤且评估为replan，检查完成率
+                if reflection_result.get("action") == "replan":
+                    # 检查完成率是否达到100%
+                    completion_rate = reflection_result.get("task_completion_rate", 0)
+                    if completion_rate >= 0.99:  # 允许0.99以上视为100%
+                        # 检查是否有明确的缺失方面
+                        missing_aspects = reflection_result.get("missing_aspects", [])
+                        if not missing_aspects or all(aspect.startswith("可能") for aspect in missing_aspects):
+                            original_action = reflection_result["action"]
+                            reflection_result["action"] = "end"
+                            reflection_result["rationale"] = f"完成率达到{completion_rate}，无明确缺失方面，可以结束任务。原建议为'{original_action}'。"
                             
-                            # 安排重新执行遗漏步骤
-                            state["missed_steps_to_execute"] = missed_steps
-                            
-                            # 修改反思结果
-                            original_action = reflection_result.get("action", "continue")
-                            reflection_result["action"] = "continue"  # 继续执行遗漏步骤
-                            
-                            # 添加未执行步骤到missing_aspects
-                            missing_step_descriptions = []
-                            for step_idx in missed_steps:
-                                if step_idx < len(state["plan"]):
-                                    step_info = state["plan"][step_idx]
-                                    step_desc = f"步骤 {step_idx + 1}: {json.dumps(step_info, ensure_ascii=False)[:100]}..."
-                                    missing_step_descriptions.append(step_desc)
-                            
-                            if "missing_aspects" not in reflection_result:
-                                reflection_result["missing_aspects"] = []
-                            
-                            # 添加遗漏步骤说明
-                            for desc in missing_step_descriptions:
-                                if desc not in reflection_result["missing_aspects"]:
-                                    reflection_result["missing_aspects"].append(desc)
-                            
-                            # 更新理由
-                            reflection_result["rationale"] = f"检测到 {len(missed_steps)} 个步骤尚未执行，需要重新执行这些步骤以确保任务完整性。要求所有步骤都必须执行完成才能标记任务为完成。" + (reflection_result.get("rationale", "") or "")
-                            
-                            # 调整任务完成率，确保未执行所有步骤时完成率不会达到100%
-                            if reflection_result.get("task_completion_rate", 0) > 0.95:
-                                # 根据未执行步骤比例调整完成率
-                                missed_ratio = len(missed_steps) / total_steps
-                                adjusted_rate = max(0.5, 1.0 - missed_ratio) 
-                                reflection_result["task_completion_rate"] = adjusted_rate
-                        
-                        # 如果没有遗漏步骤且执行率为100%，考虑将完成率调整为100%
-                        elif not missed_steps and execution_ratio == 1.0 and reflection_result.get("task_completion_rate", 0) < 1.0:
-                            reflection_result["task_completion_rate"] = 1.0
-                    
-                    # 如果执行率超过80%，但完成率评估低于0.7，调整完成率但不超过0.9
-                    if execution_ratio >= 0.8 and reflection_result.get("task_completion_rate", 0) < 0.7:
-                        original_rate = reflection_result.get("task_completion_rate", 0)
-                        # 根据执行率调整完成率，但最高不超过0.9
-                        adjusted_rate = min(0.9, max(original_rate, 0.7))
-                        reflection_result["task_completion_rate"] = adjusted_rate
-                    
-                    # 如果已执行全部步骤且评估为replan，检查完成率
-                    if state.get("steps_completed", False) and reflection_result.get("action") == "replan":
-                        # 检查是否有遗漏步骤
-                        if "missed_steps" in state and state["missed_steps"]:
-                            # 如果有遗漏步骤，而且没有安排执行，安排执行
-                            if "missed_steps_to_execute" not in state or not state["missed_steps_to_execute"]:
-                                state["missed_steps_to_execute"] = state["missed_steps"]
-                                original_action = reflection_result["action"]
-                                reflection_result["action"] = "continue"
-                                reflection_result["rationale"] = f"虽然计划步骤已全部执行过，但仍有 {len(state['missed_steps'])} 个步骤未执行或需要重新执行，安排执行这些遗漏步骤。原建议为'{original_action}'。"
-                        else:
-                            # 所有步骤都已执行，检查完成率是否达到100%
-                            completion_rate = reflection_result.get("task_completion_rate", 0)
-                            if completion_rate >= 0.99:  # 允许0.99以上视为100%
-                                # 检查是否有明确的缺失方面
-                                missing_aspects = reflection_result.get("missing_aspects", [])
-                                if not missing_aspects or all(aspect.startswith("可能") for aspect in missing_aspects):
-                                    original_action = reflection_result["action"]
-                                    reflection_result["action"] = "end"
-                                    reflection_result["rationale"] = f"已执行全部计划步骤，完成率达到{completion_rate}，无明确缺失方面，可以结束任务。原建议为'{original_action}'。"
-                                    
-                                    # 如果没有最终输出，生成一个
-                                    if "final_output" not in reflection_result or not reflection_result["final_output"]:
-                                        reflection_result["final_output"] = f"已完成任务，执行了{executed_steps}/{total_steps}个步骤，完成率{completion_rate:.2f}。"
+                            # 如果没有最终输出，生成一个
+                            if "final_output" not in reflection_result or not reflection_result["final_output"]:
+                                reflection_result["final_output"] = f"已完成任务，完成率{completion_rate:.2f}。"
             except Exception as parse_error:
                 # 捕获反思分析过程中的错误
                 parse_error_message = str(parse_error)
                 
                 # 创建默认的反思结果
-                action = "replan" if state.get("steps_completed", False) else "continue"
+                action = "continue"
                 
                 reflection_result = {
                     "task_completion_rate": 0.5,  # 默认值

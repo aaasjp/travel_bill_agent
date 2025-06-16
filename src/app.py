@@ -7,8 +7,8 @@ import os
 from dotenv import load_dotenv
 import langchain
 
-from .models.state import ExpenseState
-from .nodes.intent_analysis import IntentAnalysisNode
+from .states.state import State
+from .nodes.analysis import AnalysisNode
 from .nodes.task_planning import TaskPlanningNode
 from .nodes.decision import DecisionNode
 from .nodes.tool_execution import ToolExecutionNode
@@ -37,7 +37,7 @@ except Exception as e:
 app = FastAPI(title="差旅报销智能体")
 
 # 初始化节点
-intent_node = IntentAnalysisNode()
+intent_node = AnalysisNode()
 planning_node = TaskPlanningNode()
 decision_node = DecisionNode()
 tool_node = ToolExecutionNode()
@@ -47,10 +47,10 @@ human_intervention_node = HumanInterventionNode()
 
 # 创建工作流
 def create_workflow():
-    workflow = StateGraph(ExpenseState)
+    workflow = StateGraph(State)
     
     # 添加节点
-    workflow.add_node("intent_analysis", intent_node)
+    workflow.add_node("analysis", intent_node)
     workflow.add_node("task_planning", planning_node)
     workflow.add_node("decision", decision_node)
     workflow.add_node("tool_execution", tool_node)
@@ -59,7 +59,7 @@ def create_workflow():
     workflow.add_node("human_intervention", human_intervention_node)
     
     # 定义路由函数
-    def route_after_intent(state: ExpenseState) -> Union[Literal["task_planning"], Literal["tool_execution"]]:
+    def route_after_intent(state: State) -> Union[Literal["task_planning"], Literal["tool_execution"]]:
         """意图分析后的路由逻辑
         
         如果有工具调用，执行工具调用；否则进行任务规划
@@ -71,7 +71,7 @@ def create_workflow():
             return "tool_execution"
         return "task_planning"
     
-    def route_after_planning(state: ExpenseState) -> Union[Literal["decision"], Literal["retrieval"]]:
+    def route_after_planning(state: State) -> Union[Literal["decision"], Literal["retrieval"]]:
         """任务规划后的路由逻辑
         
         如果需要检索信息，转向检索节点；否则执行任务
@@ -83,14 +83,14 @@ def create_workflow():
             return "retrieval"
         return "decision"
     
-    def route_after_retrieval(state: ExpenseState) -> Literal["task_planning"]:
+    def route_after_retrieval(state: State) -> Literal["task_planning"]:
         """检索后的路由逻辑
         
         检索完成后返回任务规划
         """
         return "task_planning"
     
-    def route_after_decision(state: ExpenseState) -> Union[Literal["tool_execution"], Literal["reflection_node"]]:
+    def route_after_decision(state: State) -> Union[Literal["tool_execution"], Literal["reflection_node"]]:
         """执行后的路由逻辑
         
         如果当前步骤需要工具执行，则执行工具；否则进行反思
@@ -113,7 +113,7 @@ def create_workflow():
         
         return "reflection_node"
     
-    def route_after_tool(state: ExpenseState) -> Union[Literal["decision"], Literal["reflection_node"]]:
+    def route_after_tool(state: State) -> Union[Literal["decision"], Literal["reflection_node"]]:
         """工具执行后的路由逻辑
         
         如果有最终输出，进行反思；否则继续执行
@@ -124,7 +124,7 @@ def create_workflow():
             return "reflection_node"
         return "decision"
     
-    def route_after_reflection(state: ExpenseState) -> Union[Literal["task_planning"], Literal["decision"], Literal["human_intervention"], Literal["END"]]:
+    def route_after_reflection(state: State) -> Union[Literal["task_planning"], Literal["decision"], Literal["human_intervention"], Literal["END"]]:
         """反思后的路由逻辑
         
         根据反思结果决定是重新规划、继续执行、人工干预或结束
@@ -146,7 +146,7 @@ def create_workflow():
         else:
             return "END"
     
-    def route_after_human_intervention(state: ExpenseState) -> Union[Literal["task_planning"], Literal["decision"], Literal["END"], Literal["human_intervention"]]:
+    def route_after_human_intervention(state: State) -> Union[Literal["task_planning"], Literal["decision"], Literal["END"], Literal["human_intervention"]]:
         """人工干预后的路由逻辑
         
         根据人工反馈决定下一步操作
@@ -169,7 +169,7 @@ def create_workflow():
     
     # 设置边和条件路由
     workflow.add_edge(
-        "intent_analysis",
+        "analysis",
          "task_planning"
     )
     
@@ -231,7 +231,7 @@ def create_workflow():
     )
     
     # 设置入口
-    workflow.set_entry_point("intent_analysis")
+    workflow.set_entry_point("analysis")
     
     return workflow.compile()
 
@@ -249,7 +249,7 @@ async def process_expense(input_data: Dict[str, Any]):
         client_id = input_data.get("client_id", "default")
         
         # 创建初始状态
-        initial_state = ExpenseState(
+        initial_state = State(
             task_id=str(uuid.uuid4()),
             user_input=input_data.get("input", ""),
             intent={},

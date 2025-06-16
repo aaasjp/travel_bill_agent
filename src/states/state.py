@@ -16,8 +16,8 @@ class ToolResult(TypedDict):
     result: Any
     error: Optional[str]
 
-class ExpenseState(TypedDict, total=False):
-    """报销处理状态"""
+class State(TypedDict, total=False):
+    """节点状态"""
     
     # 基本信息
     task_id: str  # 任务ID
@@ -32,13 +32,6 @@ class ExpenseState(TypedDict, total=False):
     current_step: int  # 当前执行步骤
     results: Dict[str, Any]  # 执行结果
     errors: List[Dict[str, Any]]  # 错误信息
-    
-    # 执行步骤跟踪
-    executed_steps_count: int  # 已执行步骤计数
-    executed_steps: List[int]  # 已执行步骤列表
-    missed_steps: List[int]  # 遗漏的步骤列表
-    missed_steps_to_execute: List[int]  # 需要重新执行的遗漏步骤列表
-    steps_completed: bool  # 当前计划的步骤是否已全部执行
     
     # 工具调用相关
     tool_calls: Optional[List[Dict[str, Any]]]  # 工具调用请求
@@ -68,11 +61,11 @@ class ExpenseState(TypedDict, total=False):
     intervention_priority: Optional[str]  # 介入优先级
 
 # 初始化函数
-def create_expense_state(
+def create_state(
     task_id: str,
     user_input: str,
     client_id: str = "default"
-) -> ExpenseState:
+) -> State:
     """创建初始状态
     
     Args:
@@ -99,13 +92,6 @@ def create_expense_state(
         "current_step": 0,
         "results": {},
         "errors": [],
-        
-        # 执行步骤跟踪
-        "executed_steps_count": 0,
-        "executed_steps": [],
-        "missed_steps": [],
-        "missed_steps_to_execute": [],
-        "steps_completed": False,
         
         # 反思信息
         "reflection": {},

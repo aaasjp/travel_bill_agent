@@ -566,7 +566,7 @@ import logging
 from typing import Dict, Any, List, Optional
 import asyncio
 
-from ...models.state import ExpenseState
+from ...states.state import ExpenseState
 from ..knowledge.manager import KnowledgeManager
 from ..retrieval.retriever import HybridRetriever
 from ..enhancement.augmentor import ContextAugmentor

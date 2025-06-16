@@ -1,0 +1,32 @@
+[
+  {
+    "id": "cf5ee78e-51d2-409b-8021-567d4d61a41d",
+    "name": "小宋的出差申请",
+    "content": "用户小宋于2025年6月8日10:00:00提交了出差申请，目的地为北京市，出差日期为2025年6月8日至2025年6月10日，主要事由为参加会议。",
+    "type": "fact",
+    "create_time": "2025-06-16T16:17:32.126324",
+    "meta_data": {
+      "submit_time": "2025-06-08T10:00:00",
+      "trip_location": "北京",
+      "trip_duration": "2025-06-08至2025-06-10",
+      "applicant": "小宋",
+      "purpose": "参加会议"
+    }
+  },
+  {
+    "id": "e3a1fa9d-b15a-4371-9257-b3f902c7b950",
+    "name": "小宋上传的G212次火车票信息",
+    "content": "用户小宋于2025年6月11日上传火车票，显示车次为G212，出发地青岛，目的地北京，出发与到达时间均为2025年6月8日，票价330元。",
+    "type": "fact",
+    "create_time": "2025-06-16T16:17:43.343082",
+    "meta_data": {
+      "upload_date": "2025-06-11",
+      "train_number": "G212",
+      "departure_station": "青岛",
+      "arrival_station": "北京",
+      "departure_time": "2025-06-08",
+      "arrival_time": "2025-06-08",
+      "ticket_price": 330
+    }
+  }
+]

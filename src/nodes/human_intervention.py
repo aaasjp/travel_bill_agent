@@ -9,7 +9,7 @@ import asyncio
 from enum import Enum
 from datetime import datetime
 
-from ..models.state import ExpenseState
+from ..states.state import State
 
 # 介入优先级枚举
 class InterventionPriority(str, Enum):
@@ -48,7 +48,7 @@ class HumanInterventionNode:
             "normal": 86400  # 24小时
         }
     
-    def _determine_intervention_type(self, state: ExpenseState) -> InterventionType:
+    def _determine_intervention_type(self, state: State) -> InterventionType:
         """确定介入类型
         
         Args:
@@ -79,7 +79,7 @@ class HumanInterventionNode:
         # 默认为决策确认
         return InterventionType.DECISION_CONFIRMATION
     
-    def _determine_intervention_priority(self, state: ExpenseState, intervention_type: InterventionType) -> InterventionPriority:
+    def _determine_intervention_priority(self, state: State, intervention_type: InterventionType) -> InterventionPriority:
         """确定介入优先级
         
         Args:
@@ -130,7 +130,7 @@ class HumanInterventionNode:
         
         return base_priority
     
-    def _should_request_intervention(self, state: ExpenseState) -> bool:
+    def _should_request_intervention(self, state: State) -> bool:
         """判断是否需要人工干预
         
         Args:
@@ -181,7 +181,7 @@ class HumanInterventionNode:
                 has_limit_exceeded or 
                 has_compliance_risk)
     
-    def _create_intervention_options(self, state: ExpenseState, intervention_type: InterventionType) -> List[Dict[str, Any]]:
+    def _create_intervention_options(self, state: State, intervention_type: InterventionType) -> List[Dict[str, Any]]:
         """根据介入类型创建干预选项
         
         Args:
@@ -242,7 +242,7 @@ class HumanInterventionNode:
         
         return basic_options
     
-    def _create_intervention_request(self, state: ExpenseState) -> Dict[str, Any]:
+    def _create_intervention_request(self, state: State) -> Dict[str, Any]:
         """创建人工干预请求
         
         Args:
@@ -431,7 +431,7 @@ class HumanInterventionNode:
         if len(self.decision_history) > 100:
             self.decision_history = self.decision_history[-100:]
     
-    async def __call__(self, state: ExpenseState) -> ExpenseState:
+    async def __call__(self, state: State) -> State:
         """执行人工干预判断
         
         Args:

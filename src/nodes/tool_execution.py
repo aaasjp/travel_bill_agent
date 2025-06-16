@@ -5,7 +5,7 @@
 from typing import Dict, Any, List, Optional
 import json
 import time
-from ..models.state import ExpenseState
+from ..states.state import State
 from ..tool.registry import tool_registry
 
 class ToolExecutionNode:
@@ -19,7 +19,7 @@ class ToolExecutionNode:
         """初始化工具执行节点"""
         self.tool_registry = tool_registry
     
-    async def __call__(self, state: ExpenseState) -> ExpenseState:
+    async def __call__(self, state: State) -> State:
         """执行工具调用
         
         Args:

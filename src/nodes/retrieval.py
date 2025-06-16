@@ -5,7 +5,7 @@ from langchain_core.output_parsers import JsonOutputParser
 import json
 import time
 
-from ..models.state import ExpenseState
+from ..states.state import State
 from ..config import get_llm
 
 class RetrievalNode:
@@ -54,7 +54,7 @@ class RetrievalNode:
         # 构建检索链
         self.chain = self.retrieval_prompt | self.llm | self.parser
     
-    async def __call__(self, state: ExpenseState) -> ExpenseState:
+    async def __call__(self, state: State) -> State:
         """执行检索操作
         
         Args:

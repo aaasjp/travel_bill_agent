@@ -5,12 +5,12 @@ import uuid
 import time
 from datetime import datetime
 
-from ..models.state import ExpenseState
+from ..states.state import State
 from ..config import get_llm
-from ..prompts.memory_prompt import prompt as memory_prompt
 from langchain_core.messages import SystemMessage, HumanMessage
+from ..memory.memory_store import MemoryStore
 
-class IntentAnalysisNode:
+class AnalysisNode:
     """意图分析节点，负责分析用户输入并识别意图"""
     
     def __init__(self, model_name: str = "qwen3-235b-a22b"):
@@ -20,8 +20,9 @@ class IntentAnalysisNode:
             model_name: 使用的大语言模型名称
         """
         self.model_name = model_name
+        self.memory_store = MemoryStore("memory_data")
     
-    def __call__(self, state: ExpenseState) -> ExpenseState:
+    def __call__(self, state: State) -> State:
         """处理用户输入，识别意图
         
         Args:
@@ -37,7 +38,7 @@ class IntentAnalysisNode:
                 return state.copy()
             
             # 构建系统提示
-            system_prompt = self._build_system_prompt()
+            system_prompt = self._build_system_prompt(user_input)
             
             # 构建用户提示
             user_prompt = self._build_user_prompt(user_input)
@@ -60,18 +61,29 @@ class IntentAnalysisNode:
         except Exception as e:
             return state.copy()
     
-    def _build_system_prompt(self) -> str:
+    def _build_system_prompt(self, user_input: str) -> str:
         """构建系统提示
         
+        Args:
+            user_input: 用户输入
+            
         Returns:
             系统提示
         """
-        return f"""你是一个差旅报销助手，负责理解用户的需求并提供帮助。
+        # 使用search_by_llm获取相关记忆
+        relevant_memories = self.memory_store.search_by_llm(user_input, top_k=3)
         
-请分析用户输入和用户记忆记录，识别用户的意图。
+        # 格式化记忆信息
+        memory_info = ""
+        if relevant_memories:
+            for memory in relevant_memories:
+                memory_info += memory.to_dict()+"\n"
+        
+        return f"""
+你是一个差旅报销助手，负责理解用户的需求并提供帮助。请分析用户输入和用户记忆信息，识别用户的意图。
 
-用户记忆记录:
-{memory_prompt}
+用户记忆信息:
+{memory_info}
 
 请始终以JSON格式返回，确保格式正确,回复格式:
 {{
