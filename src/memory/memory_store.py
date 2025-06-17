@@ -7,6 +7,7 @@ from langchain.prompts import PromptTemplate
 import sys
 from pathlib import Path
 import uuid  # 添加uuid导入
+import re
 
 # 添加项目根目录到 Python 路径
 project_root = str(Path(__file__).parent.parent.parent)
@@ -15,6 +16,7 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from src.config import get_llm
+from src.utils.json_utils import extract_json_from_response
 
 class MemoryType(Enum):
     """记忆类型枚举"""
@@ -381,7 +383,7 @@ class MemoryStore:
         
         try:
             # 解析响应内容
-            content = self._parse_llm_response(response.content)
+            content = extract_json_from_response(response.content)
             # 解析JSON
             memory_data = json.loads(content)
             
@@ -415,7 +417,6 @@ class MemoryStore:
         """
         # 获取最近的记忆
         recent_memories = self.get_latest_memories(memory_limit)
-        print("recent_memories: ", recent_memories)
         
         # 获取LLM实例
         llm = get_llm()
@@ -449,11 +450,11 @@ class MemoryStore:
             top_k=top_k
         )
         
-        print("prompt: ", prompt)
+        print("search by llm prompt: ", prompt)
         # 调用LLM
         response = llm.invoke(prompt)
 
-        print("response: ", response.content)
+        print("search by llm response: ", response.content)
         
         # 解析响应，获取相关记忆的ID
         try:

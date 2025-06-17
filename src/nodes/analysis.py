@@ -9,6 +9,7 @@ from ..states.state import State
 from ..config import get_llm
 from langchain_core.messages import SystemMessage, HumanMessage
 from ..memory.memory_store import MemoryStore
+from ..utils.json_utils import extract_json_from_response
 
 class AnalysisNode:
     """意图分析节点，负责分析用户输入并识别意图"""
@@ -34,9 +35,11 @@ class AnalysisNode:
         try:
             # 获取用户输入
             user_input = state.get("user_input", "")
+            print(f'----user_input: {user_input}')
             if not user_input:
                 return state.copy()
-            
+            print(f'----state: {state}')
+
             # 构建系统提示
             system_prompt = self._build_system_prompt(user_input)
             
@@ -74,12 +77,12 @@ class AnalysisNode:
         relevant_memories = self.memory_store.search_by_llm(user_input, top_k=3)
         
         # 格式化记忆信息
-        memory_info = ""
+        memory_info = "[]"
         if relevant_memories:
-            for memory in relevant_memories:
-                memory_info += memory.to_dict()+"\n"
-        
-        return f"""
+            memory_list = [memory.to_dict() for memory in relevant_memories]
+            memory_info = json.dumps(memory_list, ensure_ascii=False, indent=2)
+        print(f'----memory_info: {memory_info}')
+        system_prompt= f"""
 你是一个差旅报销助手，负责理解用户的需求并提供帮助。请分析用户输入和用户记忆信息，识别用户的意图。
 
 用户记忆信息:
@@ -96,6 +99,8 @@ class AnalysisNode:
   }}
 }}
 """
+        print(f'analysis build system prompt: {system_prompt}')
+        return system_prompt
     
     def _build_user_prompt(self, user_input: str) -> str:
         """构建用户提示
@@ -193,16 +198,16 @@ class AnalysisNode:
             llm = get_llm()
             
             # 构建消息
-            messages = [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt+"/no_think")
+            messages=[
+                {'role':'system','content':system_prompt},
+                {'role':'user','content':user_prompt+'/no_think'}
             ]
             
             # 调用LLM
             response = llm.invoke(messages)
             response_text=response.content
             print(f"----intent analysis llm response: {response_text}")
-            json_str=self.extract_json_from_response(response_text)
+            json_str=extract_json_from_response(response_text)
 
             import json
             try:
@@ -217,48 +222,3 @@ class AnalysisNode:
             # 如果调用失败，返回用户输入作为意图
             intent_result = self._create_fallback_intent(user_prompt)
             return intent_result
-    
-    def extract_json_from_response(self, text):
-        """从响应中提取JSON部分"""
-        # 尝试找到JSON块
-        json_pattern = r'```json\s*([\s\S]*?)\s*```'
-        json_match = re.search(json_pattern, text)
-        
-        if json_match:
-            # 找到了JSON块
-            return json_match.group(1).strip()
-        
-        # 如果没有找到JSON块，尝试直接解析为JSON
-        # 移除<think>标签块
-        text = re.sub(r'<think>[\s\S]*?</think>', '', text).strip()
-        
-        # 尝试找到完整的JSON对象，使用更精确的匹配
-        # 找到第一个{，然后匹配到对应的}
-        start_idx = text.find('{')
-        if start_idx != -1:
-            # 从第一个{开始，计算括号匹配
-            brace_count = 0
-            end_idx = start_idx
-            
-            for i in range(start_idx, len(text)):
-                char = text[i]
-                if char == '{':
-                    brace_count += 1
-                elif char == '}':
-                    brace_count -= 1
-                    if brace_count == 0:
-                        end_idx = i
-                        break
-            
-            if brace_count == 0:  # 找到了匹配的括号
-                json_str = text[start_idx:end_idx + 1]
-                return json_str.strip()
-        
-        # 如果还是没找到，使用正则表达式作为备用方案
-        json_pattern = r'({[\s\S]*})'
-        json_match = re.search(json_pattern, text, re.DOTALL)
-        
-        if json_match:
-            return json_match.group(1).strip()
-        
-        return text  # 如果无法提取，返回原始文本

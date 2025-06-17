@@ -29,7 +29,7 @@ IntentAnalysis → TaskPlanning → ExecutionHub → HumanIntervention → Refle
 
 #### 状态管理模型扩展
 ```
-ExpenseState = {
+State = {
     # 基础状态
     "task_id": "任务唯一标识",
     "user_input": "原始用户输入",

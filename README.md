@@ -11,7 +11,7 @@
 │   ├── models/            # 数据模型
 │   │   └── state.py       # 状态模型
 │   ├── nodes/             # 工作流节点
-│   │   ├── intent_analysis.py  # 意图分析节点
+│   │   ├── analysis.py  # 意图分析节点
 │   │   ├── task_planning.py    # 任务规划节点
 │   │   ├── execution.py        # 执行节点
 │   │   └── tool_execution.py   # 工具执行节点
