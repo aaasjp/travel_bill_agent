@@ -9,7 +9,7 @@ import langchain
 
 from .states.state import State
 from .nodes.analysis import AnalysisNode
-from .nodes.task_planning import TaskPlanningNode
+from .nodes.planning import PlanningNode
 from .nodes.decision import DecisionNode
 from .nodes.tool_execution import ToolExecutionNode
 from .nodes.retrieval import RetrievalNode
@@ -38,7 +38,7 @@ app = FastAPI(title="差旅报销智能体")
 
 # 初始化节点
 intent_node = AnalysisNode()
-planning_node = TaskPlanningNode()
+planning_node = PlanningNode()
 decision_node = DecisionNode()
 tool_node = ToolExecutionNode()
 retrieval_node = RetrievalNode()
@@ -51,7 +51,7 @@ def create_workflow():
     
     # 添加节点
     workflow.add_node("analysis", intent_node)
-    workflow.add_node("task_planning", planning_node)
+    workflow.add_node("planning", planning_node)
     workflow.add_node("decision", decision_node)
     workflow.add_node("tool_execution", tool_node)
     workflow.add_node("retrieval", retrieval_node)
@@ -59,17 +59,17 @@ def create_workflow():
     workflow.add_node("human_intervention", human_intervention_node)
     
     # 定义路由函数
-    def route_after_intent(state: State) -> Union[Literal["task_planning"], Literal["tool_execution"]]:
+    def route_after_intent(state: State) -> Union[Literal["planning"], Literal["tool_execution"]]:
         """意图分析后的路由逻辑
         
         如果有工具调用，执行工具调用；否则进行任务规划
         """
         has_tool_calls = "tool_calls" in state and state["tool_calls"]
-        next_node = "tool_execution" if has_tool_calls else "task_planning"
+        next_node = "tool_execution" if has_tool_calls else "planning"
         
         if has_tool_calls:
             return "tool_execution"
-        return "task_planning"
+        return "planning"
     
     def route_after_planning(state: State) -> Union[Literal["decision"], Literal["retrieval"]]:
         """任务规划后的路由逻辑
@@ -83,12 +83,12 @@ def create_workflow():
             return "retrieval"
         return "decision"
     
-    def route_after_retrieval(state: State) -> Literal["task_planning"]:
+    def route_after_retrieval(state: State) -> Literal["planning"]:
         """检索后的路由逻辑
         
         检索完成后返回任务规划
         """
-        return "task_planning"
+        return "planning"
     
     def route_after_decision(state: State) -> Union[Literal["tool_execution"], Literal["reflection_node"]]:
         """执行后的路由逻辑
@@ -124,7 +124,7 @@ def create_workflow():
             return "reflection_node"
         return "decision"
     
-    def route_after_reflection(state: State) -> Union[Literal["task_planning"], Literal["decision"], Literal["human_intervention"], Literal["END"]]:
+    def route_after_reflection(state: State) -> Union[Literal["planning"], Literal["decision"], Literal["human_intervention"], Literal["END"]]:
         """反思后的路由逻辑
         
         根据反思结果决定是重新规划、继续执行、人工干预或结束
@@ -140,13 +140,13 @@ def create_workflow():
         if (detected_repetition or len(state.get("errors", [])) > 0) and not already_in_intervention:
             return "human_intervention"
         elif action == "replan":
-            return "task_planning"
+            return "planning"
         elif action == "continue":
             return "decision"
         else:
             return "END"
     
-    def route_after_human_intervention(state: State) -> Union[Literal["task_planning"], Literal["decision"], Literal["END"], Literal["human_intervention"]]:
+    def route_after_human_intervention(state: State) -> Union[Literal["planning"], Literal["decision"], Literal["END"], Literal["human_intervention"]]:
         """人工干预后的路由逻辑
         
         根据人工反馈决定下一步操作
@@ -161,7 +161,7 @@ def create_workflow():
         action = intervention_response.get("action", "end")
         
         if action == "replan":
-            return "task_planning"
+            return "planning"
         elif action == "continue" or action == "modify":
             return "decision"
         else:
@@ -170,11 +170,11 @@ def create_workflow():
     # 设置边和条件路由
     workflow.add_edge(
         "analysis",
-         "task_planning"
+         "planning"
     )
     
     workflow.add_conditional_edges(
-        "task_planning",
+        "planning",
         route_after_planning,
         {
             "decision": "decision",
@@ -186,7 +186,7 @@ def create_workflow():
         "retrieval",
         route_after_retrieval,
         {
-            "task_planning": "task_planning"
+            "planning": "planning"
         }
     )
     
@@ -212,7 +212,7 @@ def create_workflow():
         "reflection_node",
         route_after_reflection,
         {
-            "task_planning": "task_planning",
+            "planning": "planning",
             "decision": "decision",
             "human_intervention": "human_intervention",
             "END": END
@@ -223,7 +223,7 @@ def create_workflow():
         "human_intervention",
         route_after_human_intervention,
         {
-            "task_planning": "task_planning",
+            "planning": "planning",
             "decision": "decision",
             "human_intervention": "human_intervention",
             "END": END

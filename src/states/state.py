@@ -23,9 +23,13 @@ class State(TypedDict, total=False):
     task_id: str  # 任务ID
     user_input: str  # 用户输入
     client_id: str  # 客户端ID
+    messages: List[Dict[str, Any]]  # 对话历史，每条消息包含 role(user/assistant)、content(内容)和action(用户动作)
     
-    # 处理状态
+    # 分析节点
     intent: Dict[str, Any]  # 意图分析结果
+    memory_records: List[Dict[str, Any]]  # 用户记忆信息
+
+    # 决策节点
     plan: List[Dict[str, Any]]  # 任务执行计划
     context: Dict[str, Any]  # 上下文信息
     execution_log: List[Dict[str, Any]]  # 执行日志
@@ -81,6 +85,7 @@ def create_state(
         "task_id": task_id,
         "client_id": client_id,
         "user_input": user_input,
+        "messages": [],  # 初始化空的对话历史
         
         # 分析结果
         "intent": {},

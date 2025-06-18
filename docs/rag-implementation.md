@@ -76,7 +76,7 @@ src/
 │       └── rag_tools.py         # RAG工具
 ├── nodes/                        # 现有节点（需要改造）
 │   ├── intent_analysis.py       # 集成RAG的意图分析
-│   ├── task_planning.py         # 集成RAG的任务规划
+│   ├── planning.py         # 集成RAG的任务规划
 │   └── ...
 ├── data/                        # 数据目录（新增）
 │   ├── knowledge_base/          # 知识库文档
@@ -611,7 +611,7 @@ class RAGNode:
             logger.error(f"意图分析RAG增强失败: {str(e)}")
             return state
     
-    async def enhance_task_planning(self, state: ExpenseState) -> ExpenseState:
+    async def enhance_planning(self, state: ExpenseState) -> ExpenseState:
         """为任务规划提供知识增强"""
         try:
             intent = state.get("intent", {})
@@ -779,7 +779,7 @@ class IntentAnalysisNode:
 
 ### 7. 增强版任务规划节点
 
-需要修改 `src/nodes/task_planning.py`：
+需要修改 `src/nodes/planning.py`：
 
 ```python
 # 在 TaskPlanningNode 类中集成RAG
@@ -830,7 +830,7 @@ class TaskPlanningNode:
         """执行任务规划"""
         
         # 1. RAG增强 - 获取规划相关知识
-        enhanced_state = await self.rag_node.enhance_task_planning(state)
+        enhanced_state = await self.rag_node.enhance_planning(state)
         
         # 2. 提取RAG上下文
         rag_context = enhanced_state.get("rag_context", {})

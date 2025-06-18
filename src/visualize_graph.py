@@ -17,7 +17,7 @@ def create_workflow_graph():
     # 添加节点
     nodes = [
         "意图分析\n(IntentAnalysisNode)",
-        "任务规划\n(TaskPlanningNode)",
+        "任务规划\n(PlanningNode)",
         "执行\n(DecisionNode)",
         "工具执行\n(ToolDecisionNode)",
         "结束\n(END)"
@@ -28,11 +28,11 @@ def create_workflow_graph():
     
     # 添加边和标签
     edges = [
-        ("意图分析\n(IntentAnalysisNode)", "任务规划\n(TaskPlanningNode)", "无工具调用"),
+        ("意图分析\n(IntentAnalysisNode)", "任务规划\n(PlanningNode)", "无工具调用"),
         ("意图分析\n(IntentAnalysisNode)", "工具执行\n(ToolDecisionNode)", "有工具调用"),
-        ("工具执行\n(ToolDecisionNode)", "任务规划\n(TaskPlanningNode)", "需继续规划"),
+        ("工具执行\n(ToolDecisionNode)", "任务规划\n(PlanningNode)", "需继续规划"),
         ("工具执行\n(ToolDecisionNode)", "结束\n(END)", "有最终输出"),
-        ("任务规划\n(TaskPlanningNode)", "执行\n(DecisionNode)", ""),
+        ("任务规划\n(PlanningNode)", "执行\n(DecisionNode)", ""),
         ("执行\n(DecisionNode)", "结束\n(END)", "")
     ]
     
@@ -42,7 +42,7 @@ def create_workflow_graph():
     # 设置布局
     pos = {
         "意图分析\n(IntentAnalysisNode)": (0, 0),
-        "任务规划\n(TaskPlanningNode)": (0, -2),
+        "任务规划\n(PlanningNode)": (0, -2),
         "执行\n(DecisionNode)": (0, -4),
         "工具执行\n(ToolDecisionNode)": (3, -1),
         "结束\n(END)": (1.5, -6)

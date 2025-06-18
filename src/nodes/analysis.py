@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional, cast, Literal
+from typing import Dict, Any, List, Optional, cast, Literal, Tuple
 import json
 import re
 import uuid
@@ -7,7 +7,6 @@ from datetime import datetime
 
 from ..states.state import State
 from ..config import get_llm
-from langchain_core.messages import SystemMessage, HumanMessage
 from ..memory.memory_store import MemoryStore
 from ..utils.json_utils import extract_json_from_response
 
@@ -23,6 +22,54 @@ class AnalysisNode:
         self.model_name = model_name
         self.memory_store = MemoryStore("memory_data")
     
+    def _add_user_related_memories(self, user_input: str, state: State) -> Tuple[str, List[Dict[str, Any]]]:
+        """获取用户记忆并保存到state中
+        
+        Args:
+            user_input: 用户输入
+            state: 当前状态
+            
+        Returns:
+            memory_info: 用户记忆的JSON字符串
+        """
+        relevant_memories = self.memory_store.search_by_llm(user_input, top_k=3)
+        memory_list = []
+        if relevant_memories:
+            memory_list = [memory.to_dict() for memory in relevant_memories]
+        state["memory_records"] = memory_list
+    
+    def _add_user_message(self, state: State, content: str, action: str = "") -> None:
+        """添加用户消息到对话历史
+        
+        Args:
+            state: 当前状态
+            content: 用户输入内容
+            action: 用户执行的动作
+        """
+        if "messages" not in state:
+            state["messages"] = []
+        state["messages"].append({
+            "role": "user",
+            "content": content,
+            "action": action
+        })
+
+    def _add_assistant_message(self, state: State, content: str = "", action: str = "") -> None:
+        """添加助手消息到对话历史
+        
+        Args:
+            state: 当前状态
+            content: 助手回复内容
+            action: 助手执行的动作
+        """
+        if "messages" not in state:
+            state["messages"] = []
+        state["messages"].append({
+            "role": "assistant",
+            "content": content,
+            "action": action
+        })
+
     def __call__(self, state: State) -> State:
         """处理用户输入，识别意图
         
@@ -35,16 +82,21 @@ class AnalysisNode:
         try:
             # 获取用户输入
             user_input = state.get("user_input", "")
-            print(f'----user_input: {user_input}')
             if not user_input:
                 return state.copy()
-            print(f'----state: {state}')
+
+            # 将用户输入添加到messages中
+            self._add_user_message(state, user_input)
+            self._add_assistant_message(state)
+
+            # 保存用户记忆
+            self._add_user_related_memories(user_input, state)
 
             # 构建系统提示
             system_prompt = self._build_system_prompt(user_input)
             
             # 构建用户提示
-            user_prompt = self._build_user_prompt(user_input)
+            user_prompt = self._build_user_prompt(user_input, state)
             
             # 调用LLM获取回复
             response = self._call_llm(system_prompt, user_prompt)
@@ -73,36 +125,11 @@ class AnalysisNode:
         Returns:
             系统提示
         """
-        # 使用search_by_llm获取相关记忆
-        relevant_memories = self.memory_store.search_by_llm(user_input, top_k=3)
-        
-        # 格式化记忆信息
-        memory_info = "[]"
-        if relevant_memories:
-            memory_list = [memory.to_dict() for memory in relevant_memories]
-            memory_info = json.dumps(memory_list, ensure_ascii=False, indent=2)
-        print(f'----memory_info: {memory_info}')
-        system_prompt= f"""
-你是一个差旅报销助手，负责理解用户的需求并提供帮助。请分析用户输入和用户记忆信息，识别用户的意图。
-
-用户记忆信息:
-{memory_info}
-
-请始终以JSON格式返回，确保格式正确,回复格式:
-{{
-  "intent": {{
-    "主要意图": "用户的主要意图",
-    "细节": {{
-      "关键字段1": "值1",
-      "关键字段2": "值2"
-    }}
-  }}
-}}
-"""
+        system_prompt = """你是一个人工智能助手，负责理解用户的需求,识别用户的意图。"""
         print(f'analysis build system prompt: {system_prompt}')
         return system_prompt
     
-    def _build_user_prompt(self, user_input: str) -> str:
+    def _build_user_prompt(self, user_input: str, state: State) -> str:
         """构建用户提示
         
         Args:
@@ -111,11 +138,40 @@ class AnalysisNode:
         Returns:
             用户提示
         """
+        memory_records = state.get("memory_records", [])
+        if memory_records:
+            memory_records_str = json.dumps(memory_records, ensure_ascii=False, indent=2)
+        else:
+            memory_records_str = "无记忆记录"
+        
+        messages = state.get("messages", [])
+        if messages:
+            messages_str = json.dumps(messages, ensure_ascii=False, indent=2)
+        else:
+            messages_str = "无对话记录"
+        
         return f"""
+用户记忆记录:
+{memory_records_str}
+
+用户对话记录:
+{messages_str}
+
 用户输入:
 {user_input}
 
-请分析上述输入，识别用户意图，并按照指定格式返回。"""
+
+
+请分析上述输入，识别用户意图，并按照以下JSON格式返回:
+{{
+  "intent": {{
+    "主要意图": "用户的主要意图",
+    "细节": {{
+      "关键字段1": "值1",
+      "关键字段2": "值2"
+    }}
+  }}
+}}"""
     
     def _create_fallback_intent(self, user_prompt: str) -> Dict[str, Any]:
         """创建回退意图，当LLM调用或解析失败时使用
@@ -200,7 +256,7 @@ class AnalysisNode:
             # 构建消息
             messages=[
                 {'role':'system','content':system_prompt},
-                {'role':'user','content':user_prompt+'/no_think'}
+                {'role':'user','content':user_prompt}
             ]
             
             # 调用LLM
