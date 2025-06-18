@@ -1,4 +1,4 @@
-from chroma_store import ChromaStore
+from .chroma_store import ChromaStore
 
 # 创建向量存储实例
 vector_store = ChromaStore()

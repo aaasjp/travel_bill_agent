@@ -2,9 +2,10 @@ import chromadb
 from chromadb.config import Settings
 from typing import List, Dict, Any, Optional
 import os
+from .config import CHROMA_PERSIST_DIRECTORY, CHROMA_COLLECTION_METADATA
 
 class ChromaStore:
-    def __init__(self, persist_directory: str = "memory_data/chroma_db"):
+    def __init__(self, persist_directory: str = CHROMA_PERSIST_DIRECTORY):
         """
         初始化Chroma向量存储
         
@@ -23,7 +24,10 @@ class ChromaStore:
         Args:
             collection_name: 集合名称
         """
-        self.collection = self.client.get_or_create_collection(name=collection_name)
+        self.collection = self.client.get_or_create_collection(
+            name=collection_name,
+            metadata=CHROMA_COLLECTION_METADATA
+        )
         
     def add_documents(self, 
                      documents: List[str],
@@ -47,8 +51,6 @@ class ChromaStore:
             metadatas=metadatas,
             ids=ids
         )
-        # 自动持久化
-        self.client.persist()
         
     def search(self,
               query_texts: List[str],
