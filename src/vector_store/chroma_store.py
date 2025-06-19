@@ -124,7 +124,8 @@ class ChromaStore:
     def search(self,
               query_texts: List[str],
               n_results: int = 5,
-              where: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+              where: Optional[Dict[str, Any]] = None,
+              similarity_threshold: float = 0.0) -> Dict[str, Any]:
         """
         搜索相似文档
         
@@ -132,13 +133,21 @@ class ChromaStore:
             query_texts: 查询文本列表
             n_results: 返回结果数量
             where: 过滤条件
+            similarity_threshold: 相似度阈值，范围0-1，只有相似度大于等于此值的结果才会返回，默认为0.0（返回所有结果）
             
         Returns:
             包含搜索结果、距离和元数据的字典
         """
+        # 验证相似度阈值
+        if not 0.0 <= similarity_threshold <= 1.0:
+            raise ValueError("相似度阈值必须在0.0到1.0之间")
+        
+        # 获取更多结果用于后续过滤
+        max_results = max(n_results * 3, 50)  # 获取更多结果以确保有足够的结果通过阈值过滤
+        
         results = self.collection.query(
             query_texts=query_texts,
-            n_results=n_results,
+            n_results=max_results,
             where=where,
             include=[
                 "metadatas",
@@ -147,7 +156,55 @@ class ChromaStore:
                 #"embeddings"
             ]
         )
-        return results
+        
+        # 如果不需要阈值过滤，直接返回原始结果
+        if similarity_threshold == 0.0:
+            # 只返回请求的数量
+            for key in results:
+                if isinstance(results[key], list) and len(results[key]) > 0:
+                    results[key] = results[key][:n_results]
+            return results
+        
+        # 过滤结果：将距离转换为相似度，然后根据阈值过滤
+        filtered_results = {
+            "ids": [],
+            "distances": [],
+            "metadatas": [],
+            "documents": []
+        }
+        
+        for i, query_text in enumerate(query_texts):
+            query_ids = results["ids"][i] if results["ids"] else []
+            query_distances = results["distances"][i] if results["distances"] else []
+            query_metadatas = results["metadatas"][i] if results["metadatas"] else []
+            query_documents = results["documents"][i] if results["documents"] else []
+            
+            filtered_ids = []
+            filtered_distances = []
+            filtered_metadatas = []
+            filtered_documents = []
+            
+            for j, distance in enumerate(query_distances):
+                # 将距离转换为相似度 (距离越小，相似度越高)
+                # 使用余弦相似度的转换公式：similarity = 1 - distance
+                similarity = 1.0 - distance
+                
+                if similarity >= similarity_threshold:
+                    filtered_ids.append(query_ids[j])
+                    filtered_distances.append(distance)
+                    filtered_metadatas.append(query_metadatas[j])
+                    filtered_documents.append(query_documents[j])
+                    
+                    # 如果已经达到请求的结果数量，停止添加
+                    if len(filtered_ids) >= n_results:
+                        break
+            
+            filtered_results["ids"].append(filtered_ids)
+            filtered_results["distances"].append(filtered_distances)
+            filtered_results["metadatas"].append(filtered_metadatas)
+            filtered_results["documents"].append(filtered_documents)
+        
+        return filtered_results
     
     def delete_collection(self, collection_name: str) -> None:
         """
