@@ -6,7 +6,7 @@ import time
 from datetime import datetime
 
 from ..states.state import State
-from ..config import get_llm
+from ..llm import get_llm
 from ..memory.memory_store import MemoryStore
 from ..utils.json_utils import extract_json_from_response
 
@@ -22,22 +22,55 @@ class AnalysisNode:
         self.model_name = model_name
         self.memory_store = MemoryStore()
     
-    def _add_user_related_memories(self, user_input: str, state: State) -> Tuple[str, List[Dict[str, Any]]]:
+    def _get_user_related_memories(self, user_input: str, state: State) -> None:
         """获取用户记忆并保存到state中
         
         Args:
             user_input: 用户输入
             state: 当前状态
-            
-        Returns:
-            memory_info: 用户记忆的JSON字符串
         """
         relevant_memories = self.memory_store.search_by_llm(user_input, top_k=3)
         memory_list = []
         if relevant_memories:
             memory_list = [memory.to_dict() for memory in relevant_memories]
+        print(f"----intent analysis memory_list: {memory_list}")
         state["memory_records"] = memory_list
-    
+
+    def _add_user_intent_memories(self, intent:str, state: State) -> None:
+        """添加用户意图记忆到state
+        
+        Args:
+            intent: 用户意图
+            state: 当前状态
+        """
+
+        try:
+            if "memory_records" not in state:
+                state["memory_records"] = []
+            
+            # 将意图转换为字符串描述
+            if isinstance(intent, str):
+                memory_desc = intent
+            elif isinstance(intent, dict):
+                memory_desc = json.dumps(intent, ensure_ascii=False, indent=2)
+            else:
+                memory_desc = str(intent)
+            
+            # 调用 add_memory_by_llm 方法，传入记忆描述
+            memory = self.memory_store.add_memory_by_llm(memory_desc)
+            
+            # 获取记忆对象
+            if memory:
+                state["memory_records"].append(memory.to_dict())
+                print(f"----intent analysis memory_records: {state['memory_records']}")
+            else:
+                print(f"无法获取记忆对象: {memory.to_dict()}")
+                
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"添加用户意图记忆失败: {str(e)}")
+
     def _add_user_message(self, state: State, content: str, action: str = "") -> None:
         """添加用户消息到对话历史
         
@@ -89,8 +122,8 @@ class AnalysisNode:
             self._add_user_message(state, user_input)
             self._add_assistant_message(state)
 
-            # 保存用户记忆
-            self._add_user_related_memories(user_input, state)
+            # 获取用户记忆
+            self._get_user_related_memories(user_input, state)
 
             # 构建系统提示
             system_prompt = self._build_system_prompt(user_input)
@@ -103,15 +136,16 @@ class AnalysisNode:
             
             # 解析意图
             intent = self._parse_response(response)
+
+            print(f"----intent analysis intent: {intent}")
             
-            # 更新状态
-            updated_state = state.copy()
-            updated_state["intent"] = intent
+            self._add_user_intent_memories(intent, state)
+            state["intent"] = intent
             
             # 更新时间戳
-            updated_state["updated_at"] = datetime.now()
+            state["updated_at"] = datetime.now()
             
-            return updated_state
+            return state
             
         except Exception as e:
             return state.copy()
@@ -126,7 +160,6 @@ class AnalysisNode:
             系统提示
         """
         system_prompt = """你是一个人工智能助手，负责理解用户的需求,识别用户的意图。"""
-        print(f'analysis build system prompt: {system_prompt}')
         return system_prompt
     
     def _build_user_prompt(self, user_input: str, state: State) -> str:
@@ -171,7 +204,11 @@ class AnalysisNode:
       "关键字段2": "值2"
     }}
   }}
-}}"""
+}}
+要求：
+1. 返回的结果必须符合JSON格式
+2. 细节中的关键字段和值尽量详细
+"""
     
     def _create_fallback_intent(self, user_prompt: str) -> Dict[str, Any]:
         """创建回退意图，当LLM调用或解析失败时使用
@@ -210,6 +247,8 @@ class AnalysisNode:
             }
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"创建回退意图失败: {str(e)}")
             return {
                 "intent": {
@@ -236,6 +275,8 @@ class AnalysisNode:
                 return response
                 
         except Exception as e:
+            import traceback
+            traceback.print_exc()   
             print(f"解析响应失败: {str(e)}")
             return response
     
@@ -269,11 +310,15 @@ class AnalysisNode:
             try:
                 intent_result = json.loads(json_str)
             except json.JSONDecodeError as e:
+                import traceback
+                traceback.print_exc()
                 print(f"解析JSON失败: {str(e)}")
                 intent_result = self._create_fallback_intent(user_prompt)
             return intent_result    
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"调用LLM失败: {str(e)}")
             # 如果调用失败，返回用户输入作为意图
             intent_result = self._create_fallback_intent(user_prompt)

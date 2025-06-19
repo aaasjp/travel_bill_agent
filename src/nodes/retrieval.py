@@ -6,7 +6,7 @@ import json
 import time
 
 from ..states.state import State
-from ..config import get_llm
+from ..llm import get_llm
 
 class RetrievalNode:
     """

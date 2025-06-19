@@ -7,7 +7,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
 from ..states.state import State
-from ..config import get_llm
+from ..llm import get_llm
 from ..tool.registry import tool_registry
 from ..prompts.process_prompt import prompt as business_process_prompt
 from ..prompts.vector_store_prompt import prompt as knowledge_prompt

@@ -15,7 +15,7 @@ print(project_root)
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from src.config import get_llm
+from src.llm import get_llm
 from src.utils.json_utils import extract_json_from_response
 
 class MemoryType(Enum):
@@ -123,7 +123,7 @@ class MemoryStore:
         content: Any,
         memory_type: Union[str, MemoryType],
         meta_data: Optional[Dict] = None
-    ) -> str:
+    ) -> MemoryUnit:
         """
         添加新的记忆
         
@@ -134,7 +134,7 @@ class MemoryStore:
             meta_data: 元数据
             
         Returns:
-            str: 记忆ID
+            MemoryUnit: 记忆单元
         """
         memory_id = str(uuid.uuid4())  # 使用UUID4生成唯一ID
         memory = MemoryUnit(
@@ -146,7 +146,7 @@ class MemoryStore:
         )
         self.memories.append(memory)
         self._save_memories()
-        return memory_id
+        return memory
     
     def get_memory(self, memory_id: str) -> Optional[MemoryUnit]:
         """
@@ -299,7 +299,7 @@ class MemoryStore:
         sorted_memories = sorted(
             self.memories,
             key=lambda x: x.create_time,
-            reverse=True
+            reverse=False
         )
         return sorted_memories[:count]
     

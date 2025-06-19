@@ -6,7 +6,7 @@ import json
 import time
 
 from ..states.state import State
-from ..config import get_llm
+from ..llm import get_llm
 from ..tool.registry import tool_registry
 
 class DecisionNode:
@@ -167,6 +167,8 @@ class DecisionNode:
                 })
                 
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 # 创建基本的执行结果
                 execution_result = {
                     "action_taken": f"执行步骤 {current_step+1} 时出错: {str(e)}",

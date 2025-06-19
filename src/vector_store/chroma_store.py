@@ -3,15 +3,19 @@ from chromadb.config import Settings
 from typing import List, Dict, Any, Optional
 import os
 import uuid
+from pathlib import Path
 from transformers import AutoTokenizer, AutoModel
 import torch
 import torch.nn.functional as F
 from chromadb import Documents, EmbeddingFunction, Embeddings
-from .config import (
+from src.config import (
     CHROMA_PERSIST_DIRECTORY, 
     CHROMA_COLLECTION_METADATA,
+    CHROMA_COLLECTION_NAME,
     EMBEDDING_MODEL_NAME
 )
+from ..utils.file_utils import is_valid_file, process_file
+from ..llm import get_llm
 
 class GTEEmbeddingFunction(EmbeddingFunction):
     def __init__(self, model_name: str):
@@ -79,31 +83,39 @@ class ChromaStore:
     def add_documents(self, 
                      documents: List[str],
                      metadatas: Optional[List[Dict[str, Any]]] = None,
-                     uris: Optional[List[str]] = None,
-                     ids: Optional[List[str]] = None) -> List[str]:
+                     ids: Optional[List[str]] = None,
+                     summarize_content: bool = False) -> List[str]:
         """
         添加文档到向量存储
         
         Args:
             documents: 文档列表
             metadatas: 元数据列表
-            uris: URI列表
             ids: 文档ID列表，如果不提供则自动生成UUID
+            summarize_content: 是否对文档内容进行总结，默认为False
             
         Returns:
             生成的文档ID列表
         """
         if metadatas is None:
             metadatas = [{} for _ in documents]
-        if uris is None:
-            uris = ["" for _ in documents]
         if ids is None:
             ids = [str(uuid.uuid4()) for _ in documents]
+        
+        # 如果需要总结内容，对每个文档进行总结
+        if summarize_content:
+            for i, (doc, metadata) in enumerate(zip(documents, metadatas)):
+                summary_result = self.summarize_text_content(doc)
+                if summary_result["success"]:
+                    metadata["summary"] = summary_result["summary"]
+                    metadata["summary_length"] = summary_result["summary_length"]
+                else:
+                    # 如果总结失败，记录错误信息
+                    metadata["summary_error"] = summary_result["error"]
             
         self.collection.add(
             documents=documents,
             metadatas=metadatas,
-            uris=uris,
             ids=ids
         )
         
@@ -122,7 +134,7 @@ class ChromaStore:
             where: 过滤条件
             
         Returns:
-            包含搜索结果、距离、元数据和URIs的字典
+            包含搜索结果、距离和元数据的字典
         """
         results = self.collection.query(
             query_texts=query_texts,
@@ -131,8 +143,7 @@ class ChromaStore:
             include=[
                 "metadatas",
                 "documents", 
-                "distances",
-                "uris"
+                "distances"
                 #"embeddings"
             ]
         )
@@ -154,4 +165,344 @@ class ChromaStore:
         Returns:
             集合名称列表
         """
-        return [collection.name for collection in self.client.list_collections()] 
+        return [collection.name for collection in self.client.list_collections()]
+    
+    def add_file(self, file_path: str, summarize_content: bool = False) -> Dict[str, Any]:
+        """
+        添加单个文件到向量数据库
+        
+        Args:
+            file_path: 文件路径
+            summarize_content: 是否对文件内容进行总结，默认为False
+            
+        Returns:
+            包含处理结果的字典，包括成功状态、文件信息和错误信息
+        """
+        try:
+            # 转换为Path对象进行有效性检查
+            path_obj = Path(file_path)
+            
+            # 检查文件是否存在
+            if not path_obj.exists():
+                return {
+                    "success": False,
+                    "file_path": file_path,
+                    "error": "文件不存在"
+                }
+            
+            # 检查文件是否有效
+            if not is_valid_file(path_obj):
+                return {
+                    "success": False,
+                    "file_path": file_path,
+                    "error": "文件无效（临时文件或隐藏文件）"
+                }
+            
+            # 处理文件内容
+            try:
+                content = process_file(file_path)
+                if not content.strip():
+                    return {
+                        "success": False,
+                        "file_path": file_path,
+                        "error": "文件内容为空"
+                    }
+            except Exception as e:
+                return {
+                    "success": False,
+                    "file_path": file_path,
+                    "error": f"文件处理失败: {str(e)}"
+                }
+            
+            # 准备添加到向量数据库的数据
+            document_id = str(uuid.uuid4())
+            metadata = {
+                "path": file_path,
+                "filename": path_obj.name,
+                "file_extension": path_obj.suffix.lower(),
+                "file_size": path_obj.stat().st_size
+            }
+            
+            # 如果需要总结内容，进行总结
+            if summarize_content:
+                summary_result = self.summarize_text_content(content)
+                if summary_result["success"]:
+                    metadata["summary"] = summary_result["summary"]
+                    metadata["summary_length"] = summary_result["summary_length"]
+                else:
+                    metadata["summary_error"] = summary_result["error"]
+            
+            # 添加到向量数据库
+            try:
+                self.add_documents(
+                    documents=[content],
+                    metadatas=[metadata],
+                    ids=[document_id],
+                    summarize_content=False  # 已经手动处理了总结
+                )
+                
+                return {
+                    "success": True,
+                    "file_path": file_path,
+                    "document_id": document_id,
+                    "metadata": metadata,
+                    "content_length": len(content)
+                }
+                
+            except Exception as e:
+                return {
+                    "success": False,
+                    "file_path": file_path,
+                    "error": f"向量数据库添加失败: {str(e)}"
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "file_path": file_path,
+                "error": f"处理文件时发生错误: {str(e)}"
+            }
+    
+    def add_files_batch(self, file_paths: List[str], summarize_content: bool = False) -> Dict[str, Any]:
+        """
+        批量添加文件到向量数据库
+        
+        Args:
+            file_paths: 文件路径列表
+            summarize_content: 是否对文件内容进行总结，默认为False
+            
+        Returns:
+            包含处理结果的字典，包括成功添加的文件、失败的文件和统计信息
+        """
+        successful_files = []
+        failed_files = []
+        documents = []
+        metadatas = []
+        ids = []
+        
+        for file_path in file_paths:
+            try:
+                # 转换为Path对象进行有效性检查
+                path_obj = Path(file_path)
+                
+                # 检查文件是否存在
+                if not path_obj.exists():
+                    failed_files.append({
+                        "file_path": file_path,
+                        "error": "文件不存在"
+                    })
+                    continue
+                
+                # 检查文件是否有效
+                if not is_valid_file(path_obj):
+                    failed_files.append({
+                        "file_path": file_path,
+                        "error": "文件无效（临时文件或隐藏文件）"
+                    })
+                    continue
+                
+                # 处理文件内容
+                try:
+                    content = process_file(file_path)
+                    if not content.strip():
+                        failed_files.append({
+                            "file_path": file_path,
+                            "error": "文件内容为空"
+                        })
+                        continue
+                except Exception as e:
+                    failed_files.append({
+                        "file_path": file_path,
+                        "error": f"文件处理失败: {str(e)}"
+                    })
+                    continue
+                
+                # 准备添加到向量数据库的数据
+                metadata = {
+                    "path": file_path,
+                    "filename": path_obj.name,
+                    "file_extension": path_obj.suffix.lower(),
+                    "file_size": path_obj.stat().st_size
+                }
+                
+                # 如果需要总结内容，进行总结
+                if summarize_content:
+                    summary_result = self.summarize_text_content(content)
+                    if summary_result["success"]:
+                        metadata["summary"] = summary_result["summary"]
+                        metadata["summary_length"] = summary_result["summary_length"]
+                    else:
+                        metadata["summary_error"] = summary_result["error"]
+                
+                documents.append(content)
+                metadatas.append(metadata)
+                ids.append(str(uuid.uuid4()))
+                
+                successful_files.append(file_path)
+                
+            except Exception as e:
+                failed_files.append({
+                    "file_path": file_path,
+                    "error": f"处理文件时发生错误: {str(e)}"
+                })
+        
+        # 如果有成功处理的文件，添加到向量数据库
+        if documents:
+            try:
+                self.add_documents(
+                    documents=documents,
+                    metadatas=metadatas,
+                    ids=ids,
+                    summarize_content=False  # 已经手动处理了总结
+                )
+            except Exception as e:
+                # 如果批量添加失败，将所有文件标记为失败
+                failed_files.extend([
+                    {
+                        "file_path": file_path,
+                        "error": f"向量数据库添加失败: {str(e)}"
+                    }
+                    for file_path in successful_files
+                ])
+                successful_files = []
+        
+        return {
+            "successful_files": successful_files,
+            "failed_files": failed_files,
+            "total_files": len(file_paths),
+            "successful_count": len(successful_files),
+            "failed_count": len(failed_files)
+        }
+    
+    def add_directory(self, directory_path: str, recursive: bool = True) -> Dict[str, Any]:
+        """
+        将目录下的所有文件添加到向量数据库
+        
+        Args:
+            directory_path: 目录路径
+            recursive: 是否递归处理子目录，默认为True
+            
+        Returns:
+            包含处理结果的字典，包括成功添加的文件、失败的文件和统计信息
+        """
+        directory = Path(directory_path)
+        
+        # 检查目录是否存在
+        if not directory.exists():
+            return {
+                "successful_files": [],
+                "failed_files": [],
+                "total_files": 0,
+                "successful_count": 0,
+                "failed_count": 0,
+                "error": f"目录不存在: {directory_path}"
+            }
+        
+        if not directory.is_dir():
+            return {
+                "successful_files": [],
+                "failed_files": [],
+                "total_files": 0,
+                "successful_count": 0,
+                "failed_count": 0,
+                "error": f"路径不是目录: {directory_path}"
+            }
+        
+        # 收集所有文件路径
+        file_paths = []
+        if recursive:
+            # 递归收集所有文件
+            for file_path in directory.rglob('*'):
+                if file_path.is_file():
+                    file_paths.append(str(file_path))
+        else:
+            # 只收集当前目录下的文件
+            for file_path in directory.iterdir():
+                if file_path.is_file():
+                    file_paths.append(str(file_path))
+        
+        # 使用批量添加方法处理文件
+        return self.add_files_batch(file_paths)
+    
+    def summarize_text_content(self, content: str, max_length: int = 500, content_type: str = "text") -> Dict[str, Any]:
+        """
+        使用大模型总结文本内容
+        
+        Args:
+            content: 要总结的文本内容
+            max_length: 总结文本的最大长度，默认为1000字符
+            content_type: 内容类型，用于提示大模型更好地理解内容，默认为"text"
+            
+        Returns:
+            包含总结结果的字典，包括成功状态、总结内容和错误信息
+        """
+        try:
+            # 检查内容是否为空
+            if not content or not content.strip():
+                return {
+                    "success": False,
+                    "error": "文本内容为空"
+                }
+            
+            # 获取大模型实例
+            try:
+                llm = get_llm()
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"获取大模型实例失败: {str(e)}"
+                }
+            
+            # 构建总结提示
+            summary_prompt = f"""
+请对以下{content_type}内容进行总结，要求：
+1. 总结要简洁明了，突出重点信息
+2. 总结长度控制在{max_length}字符以内
+3. 保留关键的业务信息、数据、结论等
+4. 如果是表格或结构化数据，提取主要数据点
+5. 如果是政策文档，提取核心条款和要求
+6. 如果是技术文档，提取主要概念和步骤
+
+内容类型: {content_type}
+内容长度: {len(content)} 字符
+
+内容:
+{content}
+
+仅输出总结，不要输出其他内容。/no_think
+"""
+            
+            # 调用大模型进行总结
+            try:
+                response = llm.invoke(summary_prompt)
+                summary = response.content.strip()
+                # 去掉think部分
+                summary = summary.split("</think>")[1].strip()
+                print(f"summary: {summary}")
+                # 如果总结为空，返回错误
+                if not summary:
+                    return {
+                        "success": False,
+                        "error": "大模型返回的总结为空"
+                    }
+                
+                return {
+                    "success": True,
+                    "original_content_length": len(content),
+                    "summary": summary,
+                    "summary_length": len(summary),
+                    "content_type": content_type
+                }
+                
+            except Exception as e:
+                return {
+                    "success": False,
+                    "error": f"大模型总结失败: {str(e)}"
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"处理文本时发生错误: {str(e)}"
+            }
+    
