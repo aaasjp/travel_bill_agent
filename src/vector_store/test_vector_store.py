@@ -1,5 +1,6 @@
 from .chroma_store import ChromaStore
 
+print("开始测试向量存储")
 # 创建向量存储实例
 vector_store = ChromaStore()
 
@@ -17,11 +18,22 @@ metadatas = [
     {"city": "上海", "type": "城市景观"},
     {"city": "西安", "type": "历史遗迹"}
 ]
+uris = [
+    "https://example.com/beijing/forbidden-city",
+    "https://example.com/shanghai/the-bund",
+    "https://example.com/xian/terracotta-warriors"
+]
 
-# 添加文档到向量存储
-vector_store.add_documents(documents, metadatas)
+# 添加文档到向量存储（使用自动生成的UUID）
+doc_ids = vector_store.add_documents(documents, metadatas, uris)
+print(f"生成的文档IDs: {doc_ids}")
 
 # 搜索相似内容
 results = vector_store.search(["我想了解中国的历史景点"], n_results=2)
 
-print(results)
+print("搜索结果:")
+print(f"文档IDs: {results['ids']}")
+print(f"文档内容: {results['documents']}")
+print(f"元数据: {results['metadatas']}")
+print(f"URIs: {results['uris']}")
+print(f"相似度距离: {results['distances']}")

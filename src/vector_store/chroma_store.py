@@ -2,6 +2,7 @@ import chromadb
 from chromadb.config import Settings
 from typing import List, Dict, Any, Optional
 import os
+import uuid
 from transformers import AutoTokenizer, AutoModel
 import torch
 import torch.nn.functional as F
@@ -78,25 +79,35 @@ class ChromaStore:
     def add_documents(self, 
                      documents: List[str],
                      metadatas: Optional[List[Dict[str, Any]]] = None,
-                     ids: Optional[List[str]] = None) -> None:
+                     uris: Optional[List[str]] = None,
+                     ids: Optional[List[str]] = None) -> List[str]:
         """
         添加文档到向量存储
         
         Args:
             documents: 文档列表
             metadatas: 元数据列表
-            ids: 文档ID列表
+            uris: URI列表
+            ids: 文档ID列表，如果不提供则自动生成UUID
+            
+        Returns:
+            生成的文档ID列表
         """
         if metadatas is None:
             metadatas = [{} for _ in documents]
+        if uris is None:
+            uris = ["" for _ in documents]
         if ids is None:
-            ids = [str(i) for i in range(len(documents))]
+            ids = [str(uuid.uuid4()) for _ in documents]
             
         self.collection.add(
             documents=documents,
             metadatas=metadatas,
+            uris=uris,
             ids=ids
         )
+        
+        return ids
         
     def search(self,
               query_texts: List[str],
@@ -111,18 +122,19 @@ class ChromaStore:
             where: 过滤条件
             
         Returns:
-            包含搜索结果、距离和元数据的字典
+            包含搜索结果、距离、元数据和URIs的字典
         """
         results = self.collection.query(
             query_texts=query_texts,
             n_results=n_results,
             where=where,
-            include= [
-            "metadatas",
-            "documents",
-            "distances",
-            #"embeddings"
-        ]
+            include=[
+                "metadatas",
+                "documents", 
+                "distances",
+                "uris"
+                #"embeddings"
+            ]
         )
         return results
     
