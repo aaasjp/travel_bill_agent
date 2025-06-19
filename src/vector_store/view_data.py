@@ -7,7 +7,7 @@ def view_vector_store():
     """
     查看向量库中存储的数据
     """
-    persist_directory = "memory_data/chroma_db"
+    persist_directory = "data/chroma_db"
     
     # 确保目录存在
     os.makedirs(persist_directory, exist_ok=True)

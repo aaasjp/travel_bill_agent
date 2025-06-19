@@ -2,7 +2,42 @@ import chromadb
 from chromadb.config import Settings
 from typing import List, Dict, Any, Optional
 import os
-from .config import CHROMA_PERSIST_DIRECTORY, CHROMA_COLLECTION_METADATA
+from transformers import AutoTokenizer, AutoModel
+import torch
+import torch.nn.functional as F
+from chromadb import Documents, EmbeddingFunction, Embeddings
+from .config import (
+    CHROMA_PERSIST_DIRECTORY, 
+    CHROMA_COLLECTION_METADATA,
+    EMBEDDING_MODEL_NAME
+)
+
+class GTEEmbeddingFunction(EmbeddingFunction):
+    def __init__(self, model_name: str):
+        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.model = AutoModel.from_pretrained(model_name)
+        
+    def __call__(self, input: Documents) -> Embeddings:
+        # 对文本进行编码
+        batch_dict = self.tokenizer(
+            input, 
+            max_length=8192, 
+            padding=True, 
+            truncation=True, 
+            return_tensors='pt'
+        )
+        
+        # 获取模型输出
+        with torch.no_grad():
+            outputs = self.model(**batch_dict)
+        
+        # 使用 CLS token 作为句子表示
+        embeddings = outputs.last_hidden_state[:, 0]
+        
+        # L2 归一化
+        embeddings = F.normalize(embeddings, p=2, dim=1)
+        
+        return embeddings.tolist()
 
 class ChromaStore:
     def __init__(self, persist_directory: str = CHROMA_PERSIST_DIRECTORY):
@@ -15,8 +50,18 @@ class ChromaStore:
         self.persist_directory = persist_directory
         os.makedirs(persist_directory, exist_ok=True)
         
-        self.client = chromadb.PersistentClient(path=persist_directory)
+        # 初始化 embedding 函数
+        self.embedding_function = GTEEmbeddingFunction(EMBEDDING_MODEL_NAME)
         
+        # 初始化 ChromaDB 客户端
+        self.client = chromadb.PersistentClient(
+            path=persist_directory,
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True
+            )
+        )
+    
     def create_collection(self, collection_name: str) -> None:
         """
         创建新的集合
@@ -26,7 +71,8 @@ class ChromaStore:
         """
         self.collection = self.client.get_or_create_collection(
             name=collection_name,
-            metadata=CHROMA_COLLECTION_METADATA
+            metadata=CHROMA_COLLECTION_METADATA,
+            embedding_function=self.embedding_function
         )
         
     def add_documents(self, 
@@ -70,7 +116,13 @@ class ChromaStore:
         results = self.collection.query(
             query_texts=query_texts,
             n_results=n_results,
-            where=where
+            where=where,
+            include= [
+            "metadatas",
+            "documents",
+            "distances",
+            #"embeddings"
+        ]
         )
         return results
     

@@ -20,7 +20,7 @@ class AnalysisNode:
             model_name: 使用的大语言模型名称
         """
         self.model_name = model_name
-        self.memory_store = MemoryStore("memory_data")
+        self.memory_store = MemoryStore()
     
     def _add_user_related_memories(self, user_input: str, state: State) -> Tuple[str, List[Dict[str, Any]]]:
         """获取用户记忆并保存到state中

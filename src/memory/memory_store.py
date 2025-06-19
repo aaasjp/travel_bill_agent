@@ -81,7 +81,7 @@ class MemoryUnit:
         )
 
 class MemoryStore:
-    def __init__(self, storage_path: str = "memory_data"):
+    def __init__(self, storage_path: str = "data/memory_data"):
         """
         初始化记忆存储
         
