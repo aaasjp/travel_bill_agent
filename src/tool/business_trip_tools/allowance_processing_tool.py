@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 import json
 import random
 from datetime import datetime, timedelta
-from .base import BaseTool
+from ..base import BaseTool
 
 class AllowanceProcessingTool(BaseTool):
     """补助处理工具，检查和申请差旅补助"""

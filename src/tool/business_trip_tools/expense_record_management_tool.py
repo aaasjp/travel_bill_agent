@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 import json
 import random
 from datetime import datetime, timedelta
-from .base import BaseTool
+from ..base import BaseTool
 
 class ExpenseRecordManagementTool(BaseTool):
     """支出记录管理工具，从发票生成支出记录"""

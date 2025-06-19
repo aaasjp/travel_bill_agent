@@ -193,8 +193,6 @@ class AnalysisNode:
 用户输入:
 {user_input}
 
-
-
 请分析上述输入，识别用户意图，并按照以下JSON格式返回:
 {{
   "intent": {{

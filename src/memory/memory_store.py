@@ -462,11 +462,13 @@ class MemoryStore:
             content = self._parse_llm_response(response.content)
             # 获取ID列表
             relevant_ids = [id.strip() for id in content.split(",")]
-            # 获取对应的记忆
+            # 获取对应的记忆，注意这里实际上是按照记忆的创建时间排序的。
             relevant_memories = [
                 memory for memory in recent_memories
                 if memory.id in relevant_ids
             ]
+            #对记忆按照创建时间排序，虽然上述实际已经排好序了，这里再排序一次。
+            relevant_memories.sort(key=lambda x: x.create_time, reverse=False)
             return relevant_memories
         except Exception as e:
             print(f"解析LLM响应时出错: {e}")

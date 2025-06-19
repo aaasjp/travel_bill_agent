@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 import json
 import random
 from datetime import datetime, timedelta
-from .base import BaseTool
+from ..base import BaseTool
 
 class InvoiceProcessingTool(BaseTool):
     """发票处理工具，处理发票的上传、识别、验证全流程"""

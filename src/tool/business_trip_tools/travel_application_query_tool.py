@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 import json
 import random
 from datetime import datetime, timedelta
-from .base import BaseTool
+from ..base import BaseTool
 
 class TravelApplicationQueryTool(BaseTool):
     """差旅申请查询工具，提供差旅申请信息查询"""

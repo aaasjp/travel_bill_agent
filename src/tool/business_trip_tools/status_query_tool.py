@@ -6,7 +6,7 @@ from typing import Dict, Any, List, Optional
 import json
 import random
 from datetime import datetime, timedelta
-from .base import BaseTool
+from ..base import BaseTool
 
 class StatusQueryTool(BaseTool):
     """状态查询工具，提供各种状态信息查询"""

@@ -12,6 +12,7 @@ from ..tool.registry import tool_registry
 from ..prompts.process_prompt import prompt as business_process_prompt
 from ..prompts.vector_store_prompt import prompt as knowledge_prompt
 from ..prompts.memory_prompt import prompt as record_history_prompt
+from ..tool.registry import ToolGroup
 
 class PlanningNode:
     """任务规划节点，负责制定处理流程的计划"""
@@ -130,7 +131,7 @@ class PlanningNode:
             工具描述字符串
         """
         # 获取所有工具模式
-        tool_schemas = self.tool_registry.get_all_schemas()
+        tool_schemas = self.tool_registry.get_schemas_by_group(ToolGroup.BUSINESS_TRIP)
         
         # 格式化工具描述
         tools_description = ""
