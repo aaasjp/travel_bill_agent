@@ -29,7 +29,7 @@ class AnalysisNode:
             user_input: 用户输入
             state: 当前状态
         """
-        relevant_memories = self.memory_store.search_by_llm(user_input, top_k=3)
+        relevant_memories = self.memory_store.search_relevant_memories_by_llm(user_input, top_k=3)
         memory_list = []
         if relevant_memories:
             memory_list = [memory.to_dict() for memory in relevant_memories]

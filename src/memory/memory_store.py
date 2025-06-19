@@ -398,7 +398,7 @@ class MemoryStore:
             print(f"解析LLM响应时出错: {e}")
             raise ValueError(f"无法解析记忆描述: {e}")
 
-    def search_by_llm(
+    def search_relevant_memories_by_llm(
         self,
         query: str,
         top_k: int = 5,
