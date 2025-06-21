@@ -254,7 +254,6 @@ async def process_expense(input_data: Dict[str, Any]):
             user_input=input_data.get("input", ""),
             intent={},
             plan=[],
-            context={},
             execution_log=[],
             current_step=0,
             results={},
@@ -475,6 +474,10 @@ async def root():
         info["langsmith_studio_url"] = f"https://smith.langchain.com/studio/thread?baseUrl=http://127.0.0.1:8000&mode=graph"
     
     return info
+
+def create_app():
+    """创建并返回 FastAPI 应用实例"""
+    return app
 
 if __name__ == "__main__":
     import uvicorn

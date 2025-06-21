@@ -16,6 +16,7 @@ from src.config import (
 )
 from ..utils.file_utils import is_valid_file, process_file
 from ..llm import get_llm
+import json
 
 class GTEEmbeddingFunction(EmbeddingFunction):
     def __init__(self, model_name: str):
@@ -63,9 +64,15 @@ class ChromaStore:
             path=persist_directory,
             settings=Settings(
                 anonymized_telemetry=False,
-                allow_reset=True
+                allow_reset=True,
+                is_persistent=True,
+                persist_directory=persist_directory
             )
         )
+        
+        # 设置遥测禁用
+        if hasattr(self.client, '_telemetry'):
+            self.client._telemetry = None
     
     def create_collection(self, collection_name: str) -> None:
         """
@@ -125,7 +132,8 @@ class ChromaStore:
               query_texts: List[str],
               n_results: int = 5,
               where: Optional[Dict[str, Any]] = None,
-              similarity_threshold: float = 0.0) -> Dict[str, Any]:
+              similarity_threshold: float = 0.0,
+              use_llm_similarity: bool = False) -> Dict[str, Any]:
         """
         搜索相似文档
         
@@ -134,6 +142,7 @@ class ChromaStore:
             n_results: 返回结果数量
             where: 过滤条件
             similarity_threshold: 相似度阈值，范围0-1，只有相似度大于等于此值的结果才会返回，默认为0.0（返回所有结果）
+            use_llm_similarity: 是否使用大模型进行相似性判断，默认为False
             
         Returns:
             包含搜索结果、距离和元数据的字典
@@ -156,16 +165,44 @@ class ChromaStore:
                 #"embeddings"
             ]
         )
-        
-        # 如果不需要阈值过滤，直接返回原始结果
-        if similarity_threshold == 0.0:
-            # 只返回请求的数量
+        #print(f"【RAW SEARCH】:\n{json.dumps(results, ensure_ascii=False, indent=2)}")
+        # 首先进行向量相似度阈值过滤
+        if similarity_threshold > 0.0:
+            results = self._filter_with_vector_similarity(
+                results, query_texts, n_results, similarity_threshold
+            )
+        else:
+            # 如果不需要阈值过滤，只返回请求的数量
             for key in results:
                 if isinstance(results[key], list) and len(results[key]) > 0:
                     results[key] = results[key][:n_results]
-            return results
+        #print(f"【FILTERED SEARCH】:\n{json.dumps(results, ensure_ascii=False, indent=2)}")
+
+        # 如果启用大模型相似性判断，在向量过滤后进行进一步优化
+        if use_llm_similarity:
+            results = self._optimize_with_llm_similarity(
+                results, query_texts, n_results
+            )
+        print(f"【OPTIMIZED SEARCH】:\n{json.dumps(results, ensure_ascii=False, indent=2)}")
+        return results
+    
+    def _filter_with_vector_similarity(self, 
+                                     results: Dict[str, Any], 
+                                     query_texts: List[str], 
+                                     n_results: int, 
+                                     similarity_threshold: float) -> Dict[str, Any]:
+        """
+        使用向量相似度进行过滤（回退方法）
         
-        # 过滤结果：将距离转换为相似度，然后根据阈值过滤
+        Args:
+            results: 向量搜索的原始结果
+            query_texts: 查询文本列表
+            n_results: 返回结果数量
+            similarity_threshold: 相似度阈值
+            
+        Returns:
+            经过向量相似度过滤的结果
+        """
         filtered_results = {
             "ids": [],
             "distances": [],
@@ -186,7 +223,6 @@ class ChromaStore:
             
             for j, distance in enumerate(query_distances):
                 # 将距离转换为相似度 (距离越小，相似度越高)
-                # 使用余弦相似度的转换公式：similarity = 1 - distance
                 similarity = 1.0 - distance
                 
                 if similarity >= similarity_threshold:
@@ -205,6 +241,172 @@ class ChromaStore:
             filtered_results["documents"].append(filtered_documents)
         
         return filtered_results
+    
+    def _optimize_with_llm_similarity(self, 
+                                    results: Dict[str, Any], 
+                                    query_texts: List[str], 
+                                    n_results: int) -> Dict[str, Any]:
+        """
+        使用大模型进行相似性判断和优化排序
+        
+        Args:
+            results: 向量搜索的原始结果
+            query_texts: 查询文本列表
+            n_results: 返回结果数量
+            
+        Returns:
+            经过大模型优化的结果
+        """
+        try:
+            # 获取大模型实例
+            llm = get_llm()
+        except Exception as e:
+            print(f"获取大模型实例失败: {str(e)}，保持原始排序")
+            # 如果获取大模型失败，保持原始排序
+            return results
+        
+        optimized_results = {
+            "ids": [],
+            "distances": [],
+            "metadatas": [],
+            "documents": []
+        }
+        
+        for i, query_text in enumerate(query_texts):
+            query_ids = results["ids"][i] if results["ids"] else []
+            query_distances = results["distances"][i] if results["distances"] else []
+            query_metadatas = results["metadatas"][i] if results["metadatas"] else []
+            query_documents = results["documents"][i] if results["documents"] else []
+            
+            # 准备候选文档信息
+            candidate_docs = []
+            for j, doc_id in enumerate(query_ids):
+                metadata = query_metadatas[j] if j < len(query_metadatas) else {}
+                summary = metadata.get("summary", "")
+                filename = metadata.get("filename", "")
+                
+                candidate_docs.append({
+                    "id": doc_id,
+                    "summary": summary,
+                    "filename": filename,
+                    "distance": query_distances[j] if j < len(query_distances) else 1.0
+                })
+            
+            # 使用大模型进行相似性判断和排序优化
+            llm_optimized_docs = self._llm_similarity_judgment(
+                llm, query_text, candidate_docs, n_results
+            )
+            
+            # 根据大模型判断结果重新组织数据
+            optimized_ids = []
+            optimized_distances = []
+            optimized_metadatas = []
+            optimized_documents = []
+            
+            for doc in llm_optimized_docs:
+                # 找到原始数据中对应的索引
+                try:
+                    original_index = query_ids.index(doc["id"])
+                    optimized_ids.append(query_ids[original_index])
+                    optimized_distances.append(query_distances[original_index])
+                    optimized_metadatas.append(query_metadatas[original_index])
+                    optimized_documents.append(query_documents[original_index])
+                except ValueError:
+                    # 如果找不到对应的ID，跳过
+                    continue
+            
+            optimized_results["ids"].append(optimized_ids)
+            optimized_results["distances"].append(optimized_distances)
+            optimized_results["metadatas"].append(optimized_metadatas)
+            optimized_results["documents"].append(optimized_documents)
+        
+        return optimized_results
+    
+    def _llm_similarity_judgment(self, 
+                               llm, 
+                               query_text: str, 
+                               candidate_docs: List[Dict[str, Any]], 
+                               n_results: int) -> List[Dict[str, Any]]:
+        """
+        使用大模型判断文档与查询的相似性
+        
+        Args:
+            llm: 大模型实例
+            query_text: 查询文本
+            candidate_docs: 候选文档列表
+            n_results: 返回结果数量
+            
+        Returns:
+            经过大模型判断的文档列表
+        """
+        try:
+            # 构建候选文档信息字符串
+            candidates_info = ""
+            for i, doc in enumerate(candidate_docs):
+                candidates_info += f"""
+文档 {i+1}:
+- ID: {doc['id']}
+- 文件名: {doc['filename']}
+- 摘要: {doc['summary'] if doc['summary'] else '无摘要'}
+"""
+            
+            # 构建大模型判断提示
+            prompt = f"""
+你是一个专业的文档相似性判断专家。请根据查询内容，从已经通过向量相似度过滤的候选文档中选择最相关的文档进行排序优化。
+
+查询内容: {query_text}
+
+候选文档信息（已通过向量相似度初步过滤）:
+{candidates_info}
+
+请根据以下标准重新评估文档与查询的相关性，并按照相关性从高到低的顺序重新排序：
+1. 内容主题匹配度
+2. 关键词匹配度  
+3. 语义相关性
+4. 业务场景匹配度
+5. 文档内容的完整性和准确性
+
+需要返回的文档数量: {n_results}
+
+请按照相关性从高到低的顺序，返回最相关的文档ID列表。
+格式要求：
+- 只返回文档ID，用逗号分隔
+- 例如: id1,id2,id3
+- 如果某个文档的相关性很低，请不要包含在结果中
+- 如果所有文档都不相关，返回空字符串
+
+仅输出文档ID列表，不要输出其他内容。/no_think
+"""
+            
+            # 调用大模型进行判断
+            response = llm.invoke(prompt)
+            result_text = response.content.strip()
+            
+            # 解析大模型返回的结果
+            if not result_text:
+                return []
+            
+            # 提取think部分后的内容
+            if "</think>" in result_text:
+                result_text = result_text.split("</think>")[1].strip()
+            
+            # 解析返回的ID列表
+            selected_ids = [id.strip() for id in result_text.split(",") if id.strip()]
+            
+            # 根据选中的ID过滤候选文档
+            filtered_docs = []
+            for doc in candidate_docs:
+                if doc["id"] in selected_ids:
+                    filtered_docs.append(doc)
+                    if len(filtered_docs) >= n_results:
+                        break
+            
+            return filtered_docs
+            
+        except Exception as e:
+            print(f"大模型相似性判断失败: {str(e)}，保持原始排序")
+            # 如果大模型判断失败，保持原始排序，只返回前n_results个
+            return candidate_docs[:n_results]
     
     def delete_collection(self, collection_name: str) -> None:
         """

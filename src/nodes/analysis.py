@@ -4,6 +4,8 @@ import re
 import uuid
 import time
 from datetime import datetime
+import json
+
 
 from ..states.state import State
 from ..llm import get_llm
@@ -29,11 +31,19 @@ class AnalysisNode:
             user_input: 用户输入
             state: 当前状态
         """
-        relevant_memories = self.memory_store.search_relevant_memories_by_llm(user_input, top_k=3)
+        try:    
+            relevant_memories = self.memory_store.get_latest_memories(count=10)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"获取用户记忆失败: {str(e)}")
+            relevant_memories = []
+            
         memory_list = []
         if relevant_memories:
             memory_list = [memory.to_dict() for memory in relevant_memories]
-        print(f"----intent analysis memory_list: {memory_list}")
+        # 将memory_list转换为json字符串
+        # print(f"----intent analysis memory_list: {json.dumps(memory_list, ensure_ascii=False, indent=2)}")
         state["memory_records"] = memory_list
 
     def _add_user_intent_memories(self, intent:str, state: State) -> None:
@@ -62,7 +72,6 @@ class AnalysisNode:
             # 获取记忆对象
             if memory:
                 state["memory_records"].append(memory.to_dict())
-                print(f"----intent analysis memory_records: {state['memory_records']}")
             else:
                 print(f"无法获取记忆对象: {memory.to_dict()}")
                 
@@ -113,6 +122,7 @@ class AnalysisNode:
             更新后的状态
         """
         try:
+            print("--------------------------------------------------------------------------------analysis node start----------------------------------------------------------")
             # 获取用户输入
             user_input = state.get("user_input", "")
             if not user_input:
@@ -137,7 +147,7 @@ class AnalysisNode:
             # 解析意图
             intent = self._parse_response(response)
 
-            print(f"----intent analysis intent: {intent}")
+            #print(f"----intent analysis intent: {json.dumps(intent, ensure_ascii=False, indent=2)}")
             
             self._add_user_intent_memories(intent, state)
             state["intent"] = intent
@@ -297,14 +307,13 @@ class AnalysisNode:
                 {'role':'system','content':system_prompt},
                 {'role':'user','content':user_prompt}
             ]
-            
+            print(f"【PROMPT】:\n{json.dumps(messages, ensure_ascii=False, indent=2)}")
             # 调用LLM
             response = llm.invoke(messages)
             response_text=response.content
-            print(f"----intent analysis llm response: {response_text}")
+            print(f"【RESPONSE】:\n{response_text}")
             json_str=extract_json_from_response(response_text)
 
-            import json
             try:
                 intent_result = json.loads(json_str)
             except json.JSONDecodeError as e:

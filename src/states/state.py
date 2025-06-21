@@ -31,7 +31,6 @@ class State(TypedDict, total=False):
 
     # 决策节点
     plan: List[Dict[str, Any]]  # 任务执行计划
-    context: Dict[str, Any]  # 上下文信息
     execution_log: List[Dict[str, Any]]  # 执行日志
     current_step: int  # 当前执行步骤
     results: Dict[str, Any]  # 执行结果
@@ -90,7 +89,6 @@ def create_state(
         # 分析结果
         "intent": {},
         "plan": [],
-        "context": {},
         
         # 执行信息
         "execution_log": [],

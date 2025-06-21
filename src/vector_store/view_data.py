@@ -13,7 +13,13 @@ def view_vector_store():
     os.makedirs(persist_directory, exist_ok=True)
     
     # 创建持久化客户端
-    client = chromadb.PersistentClient(path=persist_directory)
+    client = chromadb.PersistentClient(
+        path=persist_directory,
+        settings=chromadb.config.Settings(
+            anonymized_telemetry=False,
+            allow_reset=True
+        )
+    )
     
     # 获取所有集合
     collections = client.list_collections()

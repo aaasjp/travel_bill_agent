@@ -4,15 +4,14 @@ import time
 import re
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
 
 from ..states.state import State
 from ..llm import get_llm
 from ..tool.registry import tool_registry
-from ..prompts.process_prompt import prompt as business_process_prompt
-from ..prompts.vector_store_prompt import prompt as knowledge_prompt
-from ..prompts.memory_prompt import prompt as record_history_prompt
 from ..tool.registry import ToolGroup
+from ..vector_store.chroma_store import ChromaStore
+from ..config import CHROMA_COLLECTION_NAME
+
 
 class PlanningNode:
     """任务规划节点，负责制定处理流程的计划"""
@@ -25,22 +24,34 @@ class PlanningNode:
         """
         self.llm = llm or get_llm()
         self.tool_registry = tool_registry
-        self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """你是一个专业的差旅报销规划助手。参考报销流程说明和报销政策及用户历史记录和可用工具，针对用户的意图，生成详细的执行计划。
-            
-            【报销流程说明】:
-            {business_process_prompt}
-             
-            【报销政策说明】:
-             {knowledge_prompt}  
+        
+        # 初始化向量存储
+        self.vector_store = ChromaStore()
+        self.vector_store.create_collection(CHROMA_COLLECTION_NAME)
+    
+    def _get_planning_prompt(self) -> ChatPromptTemplate:
+        """获取规划提示模板
+        
+        Returns:
+            规划提示模板
+        """
+        return ChatPromptTemplate.from_messages([
+            ("system", """你是一个专业的差旅报销规划助手。"""),
+            ("user", """            
+            【相关知识】:
+            {knowledge}
 
             【用户历史记录】:
-             {record_history_prompt}    
+            {memory_record}    
             
             【可用工具列表】:
-             {available_tools}
+            {available_tools}
+             
+            【用户意图】: {intent}
+             
+             参考上述信息，针对用户的意图，生成详细的执行计划。
             
-            注意：
+            要求：
             1. step_id 必须按照 "step_1", "step_2" 等格式递增
             2. step_name 必须是简短的步骤名称，例如："提交出差申请"、"上传火车票"等
             3. action 必须是对步骤执行动作的详细描述，例如："使用出差申请工具提交申请"、"使用上传工具上传火车票"等
@@ -51,29 +62,80 @@ class PlanningNode:
             8. 每个步骤必须包含完整的工具信息
             9. 严格按照以下JSON格式输出，不要添加任何额外的字段或注释：
 
-{{
-  "plan": {{
-    "steps": [
-      {{
-        "step_id": "step_1",
-        "step_name": "步骤名称",
-        "action": "执行动作描述",
-        "tool": {{
-          "name": "工具名称",
-          "parameters": {{
-            "参数名": "参数值"
-          }}
-        }}
-      }}
-    ]
-  }}
-}}
-```"""),
-            ("user", "意图: {intent}\n上下文: {context}")
+            {{
+                "plan": {{
+                    "steps": [
+                        {{
+                            "step_id": "step_1",
+                            "step_name": "步骤名称",
+                            "action": "执行动作描述",
+                            "tool": {{
+                                "name": "工具名称",
+                                "parameters": {{
+                                    "参数名": "参数值"
+                                }}
+                            }}
+                        }}
+                    ]
+                }}
+            }}
+            
+            """)
         ])
     
-    def extract_json_from_response(self, text):
-        """从响应中提取JSON部分"""
+    def _query_knowledge_base(self, query: str, n_results: int = 5) -> str:
+        """查询向量知识库
+        
+        Args:
+            query: 查询语句
+            n_results: 返回结果数量
+            
+        Returns:
+            知识库查询结果字符串
+        """
+        try:
+            # 执行向量搜索
+            search_results = self.vector_store.search(
+                query_texts=[query],
+                n_results=n_results,
+                similarity_threshold=0.5,  # 设置相似度阈值
+                use_llm_similarity=True   # 使用大模型进行相似性判断
+            )
+            
+            # 格式化搜索结果
+            knowledge_content = ""
+            if search_results and search_results.get("documents"):
+                documents = search_results["documents"][0]  # 第一个查询的结果
+                metadatas = search_results.get("metadatas", [[]])[0]
+                
+                for i, (doc, metadata) in enumerate(zip(documents, metadatas)):
+                    filename = metadata.get("filename", f"文档{i+1}")
+                    summary = metadata.get("summary", "")
+                    
+                    knowledge_content += f"\n--- 知识来源: {filename} ---\n"
+                    if summary:
+                        knowledge_content += f"摘要: {summary}\n"
+                    knowledge_content += f"内容: {doc[:1000]}...\n"  # 限制内容长度
+                    knowledge_content += "---\n"
+            
+            if not knowledge_content.strip():
+                knowledge_content = "未找到相关的知识库信息。"
+                
+            return knowledge_content
+            
+        except Exception as e:
+            print(f"向量知识库查询失败: {e}")
+            return "知识库查询失败，将使用默认知识。"
+    
+    def extract_json_from_response(self, text: str) -> str:
+        """从响应中提取JSON部分
+        
+        Args:
+            text: 响应文本
+            
+        Returns:
+            提取的JSON字符串
+        """
         # 尝试找到JSON块
         json_pattern = r'```json\s*([\s\S]*?)\s*```'
         json_match = re.search(json_pattern, text)
@@ -153,24 +215,34 @@ class PlanningNode:
             更新后的状态
         """
         try:
+            print("--------------------------------------------------------------------------------planning node start----------------------------------------------------------")
+            
+            # 将用户意图转换为查询语句
+            query = self._convert_intent_to_query(state["intent"])
+
+            # 查询向量知识库
+            knowledge_content = self._query_knowledge_base(query)
+            
             # 获取可用工具描述
             tools_description = self._get_available_tools_description()
+            
+            # 获取规划提示模板
+            prompt = self._get_planning_prompt()
             
             # 准备输入
             inputs = {
                 "intent": state["intent"],
-                "context": state.get("context", {}),
-                "business_process_prompt": business_process_prompt,
-                "knowledge_prompt": knowledge_prompt,
-                "record_history_prompt": record_history_prompt,
+                "knowledge": knowledge_content,  # 使用向量知识库查询结果
+                "memory_record": state.get("memory_records", "无历史记录"),
                 "available_tools": tools_description
             }
             
             # 执行规划
-            response = await self.llm.ainvoke(self.prompt.format_messages(**inputs))
+            print(f"【PROMPT】:\n{prompt.format_messages(**inputs)}")
+            response = self.llm.invoke(prompt.format_messages(**inputs))
             response_text = response.content
 
-            print(f"----task planning llm response: {response_text}")
+            print(f"【RESPONSE】:\n{response_text}")
             
             # 提取并解析 JSON
             json_str = self.extract_json_from_response(response_text)
@@ -224,7 +296,58 @@ class PlanningNode:
             return state
             
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             print(f"----task planning llm error: {e}")
             # 出错时设置空计划
             state["plan"] = []
             return state 
+
+    def _convert_intent_to_query(self, intent: str) -> str:
+        """将用户意图转换为查询语句
+        
+        Args:
+            intent: 用户意图
+            
+        Returns:
+            查询语句
+        """
+        try:
+            if isinstance(intent, dict):
+                intent = json.dumps(intent, ensure_ascii=False, indent=2)
+            else:
+                intent = str(intent)
+                
+            # 创建意图转换查询的提示模板
+            intent_to_query_prompt = """你是一个专业的差旅报销查询助手。你的任务是将用户的意图转换为适合进行知识库查询的语句。
+请根据用户的意图，生成一个查询语句，用于在差旅报销相关的知识库中搜索相关信息。
+
+要求：
+1. 查询语句应该包含关键信息，有利于更详细的信息查询
+2. 查询语句应该涵盖用户意图的核心内容
+3. 如果用户意图涉及具体流程或政策，查询语句应该包含相关关键词
+4. 返回格式：直接返回查询语句，不要添加任何额外的格式或说明
+
+用户意图: {intent}"""
+            
+            # 准备输入
+            inputs = {
+                "intent": intent
+            }
+            print(f"【PROMPT】:\n{intent_to_query_prompt.format(**inputs)}")
+            
+            # 执行转换
+            response = self.llm.invoke(intent_to_query_prompt.format(**inputs))
+            response_text = response.content.strip()
+            
+            # 只输出</think>后面的内容
+            query = response_text.split('</think>')[1].strip()
+            print(f"【RESPONSE】:\n{query}")
+            return query
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"----intent to query conversion error: {e}")
+            # 出错时返回原始意图作为查询
+            return intent

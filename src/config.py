@@ -4,6 +4,10 @@ from dotenv import load_dotenv
 # 加载环境变量
 load_dotenv()
 
+# 禁用ChromaDB遥测
+os.environ["CHROMA_TELEMETRY_ENABLED"] = "false"
+os.environ["CHROMA_ANONYMIZED_TELEMETRY"] = "false"
+
 # 模型配置
 MODEL_NAME = os.environ.get("MODEL_NAME", "qwen3-235b-a22b")
 MODEL_BASE_URL = os.environ.get("MODEL_BASE_URL", "http://10.249.238.52:13206/member3/qwen3-235b-a22b/v1")
