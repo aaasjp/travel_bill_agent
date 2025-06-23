@@ -12,6 +12,7 @@ from .base import BaseTool
 class ToolGroup(Enum):
     """工具组枚举"""
     BUSINESS_TRIP = "business_trip"
+    BUSINESS_TRIP_V2 = "business_trip_v2"
     DEFAULT = "default"
 
 class ToolRegistry:
@@ -137,14 +138,19 @@ class ToolRegistry:
         group_key = group_name.value
         group_tools = self._tool_groups.get(group_key, {})
         for tool in group_tools.values():
+            # 获取工具的参数定义
+            tool_params = tool.parameters
+            properties = tool_params.get("properties", {})
+            required = tool_params.get("required", [])
+            
             schema = {
                 "name": tool.name,
                 "description": tool.description,
                 "group": group_key,
                 "parameters": {
                     "type": "object",
-                    "properties": tool.parameters,
-                    "required": list(tool.parameters.keys())
+                    "properties": properties,
+                    "required": required
                 }
             }
             schemas.append(schema)
@@ -205,4 +211,116 @@ try:
     
 except Exception as e:
     print(f"注册business_trip工具组时出错: {e}")
+    pass
+
+# 注册business_trip_v2工具组
+try:
+    from .business_trip_tools_v2.invoice_upload_tools import (
+        InvoiceUploadTool,
+        GetDimensionDataTool,
+        GetBusinessObjectTemplateTool,
+        GetHistoryVersionFormatTool,
+        GetUserCurrencyTool,
+        GetInvoiceBusinessObjectTool,
+        InvoiceVerificationTool,
+        GetPendingInvoiceTool,
+        GetExpenseTypeMappingTool
+    )
+    
+    from .business_trip_tools_v2.expense_record_tools import (
+        GetExpenseRecordTypeTool,
+        GetExpenseTypeFieldRuleTool,
+        GetControlStandardTool,
+        AddInvoiceToExpenseRecordTool,
+        ExpenseRecordRuleExecuteTool,
+        ExpenseRecordStandardCheckTool,
+        GetBillDefineListTool,
+        CheckExpensePermissionTool,
+        GenerateBillByExpenseIdTool
+    )
+    
+    from .business_trip_tools_v2.reimbursement_bill_tools import (
+        GetMyRectificationBillListTool,
+        GetUnfinishedDebtBillTool,
+        GetAreaFieldByBillDefineIdTool,
+        GetBillDataAndTemplateTool,
+        CollectExpenseRecordInfoTool,
+        QueryTravelDaysTool,
+        JudgeNCLandPermissionTool,
+        DataFillTool,
+        GetSettlementUnitInfoTool,
+        GetExpenseProjectListTool,
+        GetHaiNaYunContractListTool,
+        IsShowXiaoWeiFieldTool,
+        GetBankAccountInfoTool,
+        JudgeCompanyInfoTool,
+        GetDimensionListDataTool,
+        JudgeUserIsNewTravelTool,
+        QueryDimObjectValueListTool,
+        QueryNewTravelPageInfoTool,
+        GetReimburseNumByDimTool,
+        QueryReimburseNumByTripOrderTool,
+        DeleteRowTool,
+        SaveBillDataTool,
+        QueryUserListTool,
+        BudgetOrgQueryTool,
+        BudgetQueryTool
+    )
+    
+    # 批量注册business_trip_v2工具组
+    business_trip_v2_tools = [
+        # 发票上传相关工具
+        InvoiceUploadTool(),
+        GetDimensionDataTool(),
+        GetBusinessObjectTemplateTool(),
+        GetHistoryVersionFormatTool(),
+        GetUserCurrencyTool(),
+        GetInvoiceBusinessObjectTool(),
+        InvoiceVerificationTool(),
+        GetPendingInvoiceTool(),
+        GetExpenseTypeMappingTool(),
+        
+        # 支出记录相关工具
+        GetExpenseRecordTypeTool(),
+        GetExpenseTypeFieldRuleTool(),
+        GetControlStandardTool(),
+        AddInvoiceToExpenseRecordTool(),
+        ExpenseRecordRuleExecuteTool(),
+        ExpenseRecordStandardCheckTool(),
+        GetBillDefineListTool(),
+        CheckExpensePermissionTool(),
+        GenerateBillByExpenseIdTool(),
+        
+        # 报销单相关工具
+        GetMyRectificationBillListTool(),
+        GetUnfinishedDebtBillTool(),
+        GetAreaFieldByBillDefineIdTool(),
+        GetBillDataAndTemplateTool(),
+        CollectExpenseRecordInfoTool(),
+        QueryTravelDaysTool(),
+        JudgeNCLandPermissionTool(),
+        DataFillTool(),
+        GetSettlementUnitInfoTool(),
+        GetExpenseProjectListTool(),
+        GetHaiNaYunContractListTool(),
+        IsShowXiaoWeiFieldTool(),
+        GetBankAccountInfoTool(),
+        JudgeCompanyInfoTool(),
+        GetDimensionListDataTool(),
+        JudgeUserIsNewTravelTool(),
+        QueryDimObjectValueListTool(),
+        QueryNewTravelPageInfoTool(),
+        GetReimburseNumByDimTool(),
+        QueryReimburseNumByTripOrderTool(),
+        DeleteRowTool(),
+        SaveBillDataTool(),
+        QueryUserListTool(),
+        BudgetOrgQueryTool(),
+        BudgetQueryTool()
+    ]
+    
+    tool_registry.register_tools_to_group(business_trip_v2_tools, ToolGroup.BUSINESS_TRIP_V2)
+    
+except Exception as e:
+    print(f"注册business_trip_v2工具组时出错: {e}")
     pass 

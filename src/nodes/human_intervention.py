@@ -47,6 +47,12 @@ class HumanInterventionNode:
             "important": 3600,  # 1小时
             "normal": 86400  # 24小时
         }
+        
+        # 存储待处理的任务
+        self.pending_tasks = {}
+        
+        # 存储决策历史
+        self.decision_history = []
     
     def _determine_intervention_type(self, state: State) -> InterventionType:
         """确定介入类型
@@ -441,6 +447,31 @@ class HumanInterventionNode:
             更新后的状态
         """
         try:
+            # 检查是否已经有干预请求（来自参数验证节点）
+            if state.get("needs_human_intervention", False) and state.get("intervention_request"):
+                # 已经有干预请求，直接处理
+                intervention_request = state["intervention_request"]
+                
+                # 保存请求到节点
+                task_id = state.get("task_id", "unknown")
+                self.pending_tasks[task_id] = intervention_request
+                
+                # 尝试从历史决策中学习推荐动作
+                recommended_action = self._analyze_similar_decisions(intervention_request)
+                if recommended_action:
+                    intervention_request["recommended_action"] = recommended_action
+                
+                # 发送通知
+                self._send_notifications(intervention_request)
+                
+                # 设置任务状态为等待人工干预
+                state["status"] = "waiting_for_human"
+                
+                # 设置干预响应为空
+                state["intervention_response"] = None
+                
+                return state
+            
             # 判断是否需要人工干预
             needs_intervention = self._should_request_intervention(state)
             
@@ -512,4 +543,143 @@ class HumanInterventionNode:
         # 学习用户决策
         self._learn_from_decision(request, feedback)
         
-        return request 
+        return request
+    
+    async def handle_parameter_intervention_feedback(self, state: State, feedback: Dict[str, Any]) -> State:
+        """处理参数验证的人工干预反馈
+        
+        Args:
+            state: 当前状态
+            feedback: 人工反馈
+            
+        Returns:
+            更新后的状态
+        """
+        try:
+            # 获取当前干预请求
+            intervention_request = state.get("intervention_request", {})
+            intervention_type = intervention_request.get("intervention_type", "")
+            
+            if intervention_type == "info_supplement":
+                # 处理参数补充的反馈
+                action = feedback.get("action", "")
+                
+                if action == "provide_parameters":
+                    # 提供参数
+                    provided_params = feedback.get("parameters", {})
+                    
+                    # 更新干预请求
+                    intervention_request["feedback"] = feedback
+                    intervention_request["status"] = "resolved"
+                    intervention_request["resolved_timestamp"] = time.time()
+                    
+                    # 设置干预响应
+                    state["intervention_response"] = {
+                        "action": action,
+                        "parameters": provided_params,
+                        "timestamp": time.time()
+                    }
+                    
+                    # 清除人工干预状态
+                    state["needs_human_intervention"] = False
+                    state["intervention_request"] = None
+                    state["intervention_type"] = None
+                    state["intervention_priority"] = None
+                    state["status"] = "ready_for_execution"
+                    
+                    # 记录到执行日志
+                    if "execution_log" not in state:
+                        state["execution_log"] = []
+                    
+                    state["execution_log"].append({
+                        "node": "human_intervention",
+                        "action": "参数补充反馈处理完成",
+                        "details": {
+                            "action": action,
+                            "provided_params": provided_params
+                        },
+                        "timestamp": time.time()
+                    })
+                    
+                elif action == "skip_tool":
+                    # 跳过工具
+                    intervention_request["feedback"] = feedback
+                    intervention_request["status"] = "resolved"
+                    intervention_request["resolved_timestamp"] = time.time()
+                    
+                    # 设置干预响应
+                    state["intervention_response"] = {
+                        "action": action,
+                        "timestamp": time.time()
+                    }
+                    
+                    # 清除人工干预状态
+                    state["needs_human_intervention"] = False
+                    state["intervention_request"] = None
+                    state["intervention_type"] = None
+                    state["intervention_priority"] = None
+                    state["status"] = "ready_for_execution"
+                    
+                    # 记录到执行日志
+                    if "execution_log" not in state:
+                        state["execution_log"] = []
+                    
+                    state["execution_log"].append({
+                        "node": "human_intervention",
+                        "action": "跳过工具反馈处理完成",
+                        "details": {
+                            "action": action
+                        },
+                        "timestamp": time.time()
+                    })
+                
+                elif action == "modify_plan":
+                    # 修改计划
+                    intervention_request["feedback"] = feedback
+                    intervention_request["status"] = "resolved"
+                    intervention_request["resolved_timestamp"] = time.time()
+                    
+                    # 设置干预响应
+                    state["intervention_response"] = {
+                        "action": action,
+                        "modifications": feedback.get("modifications", {}),
+                        "timestamp": time.time()
+                    }
+                    
+                    # 清除人工干预状态
+                    state["needs_human_intervention"] = False
+                    state["intervention_request"] = None
+                    state["intervention_type"] = None
+                    state["intervention_priority"] = None
+                    state["status"] = "plan_modified"
+                    
+                    # 记录到执行日志
+                    if "execution_log" not in state:
+                        state["execution_log"] = []
+                    
+                    state["execution_log"].append({
+                        "node": "human_intervention",
+                        "action": "修改计划反馈处理完成",
+                        "details": {
+                            "action": action,
+                            "modifications": feedback.get("modifications", {})
+                        },
+                        "timestamp": time.time()
+                    })
+            
+            return state
+            
+        except Exception as e:
+            # 记录错误
+            error_message = str(e)
+            if "errors" not in state:
+                state["errors"] = []
+                
+            state["errors"].append({
+                "node": "human_intervention",
+                "action": "handle_parameter_intervention_feedback",
+                "error": error_message,
+                "timestamp": str(state.get("updated_at", time.time()))
+            })
+            
+            return state 

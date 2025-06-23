@@ -7,7 +7,7 @@ import os
 from dotenv import load_dotenv
 import langchain
 
-from .states.state import State
+from .states.state import State, create_state
 from .nodes.analysis import AnalysisNode
 from .nodes.planning import PlanningNode
 from .nodes.decision import DecisionNode
@@ -248,28 +248,15 @@ async def process_expense(input_data: Dict[str, Any]):
         # 获取客户端ID
         client_id = input_data.get("client_id", "default")
         
+        # 获取用户信息
+        user_info = input_data.get("user_info", None)
+        
         # 创建初始状态
-        initial_state = State(
+        initial_state = create_state(
             task_id=str(uuid.uuid4()),
             user_input=input_data.get("input", ""),
-            intent={},
-            plan=[],
-            execution_log=[],
-            current_step=0,
-            results={},
-            errors=[],
-            reflection={},
-            final_output="",
             client_id=client_id,
-            created_at=datetime.now(),
-            updated_at=datetime.now(),
-            need_retrieval=False,
-            is_complete=False,
-            reflection_result={},
-            status="running",
-            needs_human_intervention=False,
-            intervention_request=None,
-            intervention_response=None
+            user_info=user_info
         )
         
         # 执行工作流

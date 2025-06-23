@@ -193,11 +193,25 @@ class AnalysisNode:
         else:
             messages_str = "无对话记录"
         
+        # 获取用户信息
+        user_info = state.get("user_info", {})
+        user_info_str = ""
+        if user_info:
+            user_info_lines = []
+            for key, value in user_info.items():
+                user_info_lines.append(f"{key}：{value}")
+            user_info_str = "\n".join(user_info_lines)
+        else:
+            user_info_str = "用户信息未设置"
+        
         return f"""
-用户记忆记录:
+【用户基本信息】:
+{user_info_str}
+
+【用户记忆记录】:
 {memory_records_str}
 
-用户对话记录:
+【用户对话记录】:
 {messages_str}
 
 用户输入:

@@ -25,16 +25,29 @@ class State(TypedDict, total=False):
     client_id: str  # 客户端ID
     messages: List[Dict[str, Any]]  # 对话历史，每条消息包含 role(user/assistant)、content(内容)和action(用户动作)
     
+    # 用户基本信息
+    user_info: Dict[str, Any]  # 用户基本信息，包含姓名、工号、部门、职位、手机号、邮箱、性别、年龄等
+    
     # 分析节点
     intent: Dict[str, Any]  # 意图分析结果
     memory_records: List[Dict[str, Any]]  # 用户记忆信息
 
     # 决策节点
     plan: List[Dict[str, Any]]  # 任务执行计划
+    step_tools: List[Dict[str, Any]]  # 每个步骤选择的工具信息
     execution_log: List[Dict[str, Any]]  # 执行日志
     current_step: int  # 当前执行步骤
     results: Dict[str, Any]  # 执行结果
     errors: List[Dict[str, Any]]  # 错误信息
+    
+    # 参数验证节点
+    parameter_validation_results: Optional[Dict[str, Any]]  # 参数验证结果
+    pending_tools: Optional[List[Dict[str, Any]]]  # 待执行的工具列表
+    validated_tools: Optional[List[str]]  # 已完成参数验证的工具列表
+    
+    # 工具执行节点
+    completed_tools: Optional[List[Dict[str, Any]]]  # 已完成的工具列表
+    current_tool_index: Optional[int]  # 当前执行的工具索引
     
     # 工具调用相关
     tool_calls: Optional[List[Dict[str, Any]]]  # 工具调用请求
@@ -67,7 +80,8 @@ class State(TypedDict, total=False):
 def create_state(
     task_id: str,
     user_input: str,
-    client_id: str = "default"
+    client_id: str = "default",
+    user_info: Optional[Dict[str, Any]] = None
 ) -> State:
     """创建初始状态
     
@@ -75,6 +89,7 @@ def create_state(
         task_id: 任务ID
         user_input: 用户输入
         client_id: 客户端ID
+        user_info: 用户基本信息，包含姓名、工号、部门、职位、手机号、邮箱、性别、年龄等
         
     Returns:
         初始状态
@@ -85,6 +100,9 @@ def create_state(
         "client_id": client_id,
         "user_input": user_input,
         "messages": [],  # 初始化空的对话历史
+        
+        # 用户基本信息
+        "user_info": user_info or {},
         
         # 分析结果
         "intent": {},

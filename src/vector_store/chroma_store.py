@@ -183,7 +183,7 @@ class ChromaStore:
             results = self._optimize_with_llm_similarity(
                 results, query_texts, n_results
             )
-        print(f"【OPTIMIZED SEARCH】:\n{json.dumps(results, ensure_ascii=False, indent=2)}")
+        # print(f"【OPTIMIZED SEARCH】:\n{json.dumps(results, ensure_ascii=False, indent=2)}")
         return results
     
     def _filter_with_vector_similarity(self, 

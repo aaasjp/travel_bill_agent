@@ -2,6 +2,7 @@ from typing import Dict, Any, List, Optional
 import json
 import time
 import re
+import uuid
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -36,45 +37,43 @@ class PlanningNode:
             规划提示模板
         """
         return ChatPromptTemplate.from_messages([
-            ("system", """你是一个专业的差旅报销规划助手。"""),
-            ("user", """            
+            ("system", """你是一个专业的任务规划助手。"""),
+            ("user", """ 
+                        
             【相关知识】:
             {knowledge}
 
-            【用户历史记录】:
-            {memory_record}    
-            
-            【可用工具列表】:
-            {available_tools}
+            【用户历史记录】
+            其中每个记忆的类型如下:
+             fact: 事实性记忆
+             experience: 经验性记忆
+             preference: 偏好性记忆
+             emotion: 情感性记忆
+             task: 任务相关记忆
+             conversation: 对话记忆
+             user_intent: 用户意图记忆
+             other: 其他类型
+
+            具体的记忆信息如下：   
+            {memory_records}    
+
+        
+            【用户需求】: {intent}
              
-            【用户意图】: {intent}
-             
-             参考上述信息，针对用户的意图，生成详细的执行计划。
+            参考上述信息，为了完成用户需求，生成详细的接下来需要执行的计划。
             
             要求：
-            1. step_id 必须按照 "step_1", "step_2" 等格式递增
-            2. step_name 必须是简短的步骤名称，例如："提交出差申请"、"上传火车票"等
-            3. action 必须是对步骤执行动作的详细描述，例如："使用出差申请工具提交申请"、"使用上传工具上传火车票"等
-            4. tool.name 必须是可用工具列表中的工具名称
-            5. tool.parameters 必须包含该工具所需的所有参数，参数值必须符合工具要求
-            6. 不要添加任何额外的字段或注释
-            7. 确保JSON格式完全正确，包括所有引号和逗号
-            8. 每个步骤必须包含完整的工具信息
-            9. 严格按照以下JSON格式输出，不要添加任何额外的字段或注释：
+            1. step_name 必须是简短的步骤名称，例如："提交出差申请"、"上传火车票"等
+            2. step_desc 必须是对步骤执行动作的详细描述，例如："使用出差申请工具提交申请"、"使用上传工具上传火车票"等
+            3. 确保JSON格式完全正确，包括所有引号和逗号
+            4. 严格按照以下JSON格式输出，不要添加任何额外的字段或注释：
 
             {{
                 "plan": {{
                     "steps": [
                         {{
-                            "step_id": "step_1",
                             "step_name": "步骤名称",
-                            "action": "执行动作描述",
-                            "tool": {{
-                                "name": "工具名称",
-                                "parameters": {{
-                                    "参数名": "参数值"
-                                }}
-                            }}
+                            "step_desc": "执行动作描述",
                         }}
                     ]
                 }}
@@ -233,7 +232,7 @@ class PlanningNode:
             inputs = {
                 "intent": state["intent"],
                 "knowledge": knowledge_content,  # 使用向量知识库查询结果
-                "memory_record": state.get("memory_records", "无历史记录"),
+                "memory_records": state.get("memory_records", "无历史记录"),
                 "available_tools": tools_description
             }
             
@@ -258,40 +257,46 @@ class PlanningNode:
                     }
                 }
             
-            # 更新计划
-            state["plan"] = planning_result.get("plan", {}).get("steps", [])
+            # 获取原始计划数据
+            original_plan = planning_result.get("plan", {}).get("steps", [])
+            state["plan"] = original_plan
             
             # 确保每个步骤都包含必要的信息
+            validated_plan = []
             for i, step in enumerate(state["plan"]):
+                # 跳过无效的步骤
                 if not isinstance(step, dict):
+                    print(f"跳过无效步骤 {i}: 不是字典类型")
                     continue
-                    
-                # 确保步骤有唯一ID
-                if "step_id" not in step:
-                    step["step_id"] = f"step_{i+1}"
                 
-                # 确保步骤名称存在
-                if "step_name" not in step:
-                    step["step_name"] = f"步骤{i+1}"
+                # 创建标准化的步骤对象
+                validated_step = {
+                    "step_id": str(uuid.uuid4()),  # 使用UUID作为唯一标识
+                    "step_name": "",
+                    "step_desc": "",
+                    "status": "pending",  # 添加状态字段
+                    "order": i + 1,  # 添加顺序字段
+                    "created_at": time.time()  # 添加创建时间
+                }
                 
-                # 确保执行动作描述存在
-                if "action" not in step:
-                    step["action"] = f"执行步骤{i+1}"
+                # 合并现有数据，保留有效字段
+                if isinstance(step.get("step_id"), str) and step["step_id"]:
+                    validated_step["step_id"] = step["step_id"]
                 
-                # 确保工具信息格式正确
-                if "tool" not in step:
-                    step["tool"] = {
-                        "name": "",
-                        "parameters": {}
-                    }
-                elif isinstance(step["tool"], dict):
-                    if "name" not in step["tool"]:
-                        step["tool"]["name"] = ""
-                    if "parameters" not in step["tool"]:
-                        step["tool"]["parameters"] = {}
+                if isinstance(step.get("step_name"), str) and step["step_name"].strip():
+                    validated_step["step_name"] = step["step_name"].strip()
+                else:
+                    validated_step["step_name"] = f"步骤{i+1}"
+                
+                if isinstance(step.get("step_desc"), str) and step["step_desc"].strip():
+                    validated_step["step_desc"] = step["step_desc"].strip()
+                else:
+                    validated_step["step_desc"] = f"执行步骤{i+1}"
+                
+                validated_plan.append(validated_step)
             
-            # 保存规划结果到状态
-            state["planning_result"] = planning_result
+            # 更新计划为验证后的版本
+            state["plan"] = validated_plan
             
             return state
             

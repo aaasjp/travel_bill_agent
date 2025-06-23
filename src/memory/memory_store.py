@@ -26,6 +26,7 @@ class MemoryType(Enum):
     EMOTION = "emotion"     # 情感性记忆
     TASK = "task"          # 任务相关记忆
     CONVERSATION = "conversation"  # 对话记忆
+    USER_INTENT = "user_intent"  # 用户意图记忆
     OTHER = "other"        # 其他类型
 
 class MemoryUnit:
@@ -354,7 +355,7 @@ class MemoryStore:
 请分析以下记忆描述，并将其解析为结构化的记忆单元。需要提取以下信息：
 1. 记忆名称（name）：简洁的标题
 2. 记忆内容（content）：详细内容
-3. 记忆类型（type）：必须是以下类型之一：fact（事实）, experience（经验）, preference（偏好）, emotion（情感）, task（任务）, conversation（对话）, other（其他）
+3. 记忆类型（type）：必须是以下类型之一：fact（事实）, experience（经验）, preference（偏好）, emotion（情感）, task（任务）, conversation（对话）,user_intent（用户意图）, other（其他）
 4. 元数据（meta_data）：相关的额外信息，如时间、地点、人物等
 
 记忆描述：
@@ -377,6 +378,8 @@ class MemoryStore:
         
         # 构建完整提示
         prompt = prompt_template.format(memory_desc=memory_desc)
+
+        print("【add memory by llm prompt】: ", prompt)
         
         # 调用LLM
         response = llm.invoke(prompt)
