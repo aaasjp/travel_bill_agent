@@ -56,6 +56,9 @@ class State(TypedDict, total=False):
     reflection: Dict[str, Any]  # 反思结果
     reflection_result: Dict[str, Any]  # 详细反思分析结果
     
+    # 对话相关
+    conversation_response: Optional[str]  # 对话节点的回复内容
+    
     # 任务完成标志
     is_complete: bool  # 当前步骤是否完成
     final_output: str  # 最终输出结果
@@ -112,6 +115,9 @@ def create_state(
         # 反思信息
         "reflection": {},
         "reflection_result": {},
+        
+        # 对话相关
+        "conversation_response": None,
         
         # 状态控制
         "is_complete": False,

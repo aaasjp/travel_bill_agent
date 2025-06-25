@@ -14,6 +14,7 @@ from .nodes.decision import DecisionNode
 from .nodes.tool_execution import ToolExecutionNode
 from .nodes.reflection import ReflectionNode
 from .nodes.human_intervention import HumanInterventionNode
+from .nodes.conversation import ConversationNode
 from .tool.registry import tool_registry
 from .config import PORT, HOST
 
@@ -42,6 +43,7 @@ decision_node = DecisionNode()
 tool_node = ToolExecutionNode()
 reflection_node = ReflectionNode()
 human_intervention_node = HumanInterventionNode()
+conversation_node = ConversationNode()
 
 # 创建工作流
 def create_workflow():
@@ -54,7 +56,25 @@ def create_workflow():
     workflow.add_node("tool_execution", tool_node)
     workflow.add_node("reflection_node", reflection_node)  # 修改节点名称避免冲突
     workflow.add_node("human_intervention", human_intervention_node)
+    workflow.add_node("conversation", conversation_node)
     
+    def route_after_analysis(state: State) -> Literal["planning"]:
+        """分析后的路由逻辑
+        
+        直接转向规划节点
+        """
+        return "planning"
+    
+    def route_after_planning(state: State) -> Union[Literal["conversation"], Literal["decision"]]:
+        """规划后的路由逻辑
+        
+        如果plan为空，则进入对话节点；否则进入决策节点
+        """
+        plan = state.get("plan", [])
+        if not plan or len(plan) == 0:
+            return "conversation"
+        else:
+            return "decision"
     
     def route_after_decision(state: State) -> Union[Literal["tool_execution"], Literal["reflection_node"]]:
         """执行后的路由逻辑
@@ -72,8 +92,9 @@ def create_workflow():
         
         return "reflection_node"
     
-    def route_after_tool(state: State) -> Union[Literal["decision"], Literal["reflection_node"]]:
+    def route_after_tool(state: State) -> Literal["reflection_node"]:
         """工具执行后的路由逻辑
+
         直接转向反思节点
         """
         return "reflection_node"
@@ -121,15 +142,29 @@ def create_workflow():
         else:
             return "END"
     
+    def route_after_conversation(state: State) -> Literal["END"]:
+        """对话后的路由逻辑
+        
+        对话完成后直接结束
+        """
+        return "END"
+    
     # 设置边和条件路由
     workflow.add_edge(
         "analysis",
-         "planning"
+        route_after_analysis,
+        {
+            "planning": "planning"
+        }
     )
     
-    workflow.add_edge(
+    workflow.add_conditional_edges(
         "planning",
-        "decision"
+        route_after_planning,
+        {
+            "conversation": "conversation",
+            "decision": "decision"
+        }
     )
     
     workflow.add_conditional_edges(
@@ -145,7 +180,6 @@ def create_workflow():
         "tool_execution",
         route_after_tool,
         {
-            "decision": "decision",
             "reflection_node": "reflection_node"
         }
     )
@@ -168,6 +202,14 @@ def create_workflow():
             "planning": "planning",
             "decision": "decision",
             "human_intervention": "human_intervention",
+            "END": END
+        }
+    )
+    
+    workflow.add_conditional_edges(
+        "conversation",
+        route_after_conversation,
+        {
             "END": END
         }
     )
@@ -219,6 +261,11 @@ async def process_expense(input_data: Dict[str, Any]):
                 "output": final_state.get("final_output", ""),
             }
         }
+        
+        # 如果是对话节点完成的，添加对话相关信息
+        if final_state.get("status") in ["conversation_completed", "conversation_error"]:
+            response_data["conversation_response"] = final_state.get("conversation_response", "")
+            response_data["result"]["conversation_type"] = "plan_empty"
         
         # 如果需要人工干预，添加干预请求
         if final_state.get("needs_human_intervention", False):
