@@ -135,7 +135,6 @@ class DecisionNode:
         intervention_request = {
             "task_id": state.get("task_id", "unknown"),
             "user_input": state.get("user_input", ""),
-            "current_step": state.get("current_step", 0),
             "step_id": step_info.get("step_id", ""),
             "step_name": step_info.get("step_name", ""),
             "step_desc": step_info.get("step_desc", ""),
@@ -372,6 +371,9 @@ class DecisionNode:
             # 处理决策结果
             step_tools = decision_result.get("step_tools", [])
             
+            # 将步骤工具信息存储到状态中（提前设置，确保人工干预时可用）
+            state["step_tools"] = step_tools
+            
             # 初始化参数验证结果
             if "parameter_validation_results" not in state:
                 state["parameter_validation_results"] = {}
@@ -478,45 +480,11 @@ class DecisionNode:
                             state["intervention_priority"] = "normal"
                             state["status"] = "waiting_for_human"
                             
-                            # 记录到执行日志
-                            if "execution_log" not in state:
-                                state["execution_log"] = []
-                            
-                            state["execution_log"].append({
-                                "node": "decision",
-                                "action": "需要人工干预",
-                                "details": {
-                                    "step_id": step_id,
-                                    "step_name": step_name,
-                                    "tool_name": tool_name,
-                                    "missing_params": missing_params,
-                                    "intervention_request": intervention_request
-                                },
-                                "timestamp": time.time()
-                            })
-                            
                             return state
-            
-            # 将步骤工具信息存储到状态中
-            state["step_tools"] = step_tools
             
             # 如果没有需要人工干预的情况，设置状态为可以执行工具
             if not state.get("needs_human_intervention", False):
                 state["status"] = "ready_for_execution"
-                
-                # 记录到执行日志
-                if "execution_log" not in state:
-                    state["execution_log"] = []
-                
-                state["execution_log"].append({
-                    "node": "decision",
-                    "action": "决策和参数验证完成",
-                    "details": {
-                        "validated_tools": len(state["validated_tools"]),
-                        "pending_tools": len(state["pending_tools"])
-                    },
-                    "timestamp": time.time()
-                })
             
             return state
             
@@ -526,15 +494,10 @@ class DecisionNode:
             print(f"决策节点执行失败: {str(e)}")
             
             # 统一的异常处理：设置默认的决策结果
-            state["step_tools"] = [
-                {
-                    "step_id": "error",
-                    "step_name": "决策失败",
-                    "step_desc": "决策节点执行过程中发生错误，无法确定具体步骤",
-                    "tools": []
-                }
-            ]
-            
+            # 如果决策失败，并且没有step_tools，则设置为空数组
+            if not state.get("step_tools", []):
+                state["step_tools"] = []
+                            
             return state
     
     async def handle_parameter_feedback(self, state: State, feedback: Dict[str, Any]) -> State:
@@ -599,20 +562,7 @@ class DecisionNode:
                                     state["intervention_priority"] = None
                                     state["status"] = "ready_for_execution"
                                     
-                                    # 记录到执行日志
-                                    if "execution_log" not in state:
-                                        state["execution_log"] = []
-                                    
-                                    state["execution_log"].append({
-                                        "node": "decision",
-                                        "action": "参数补充完成",
-                                        "details": {
-                                            "step_id": step_id,
-                                            "tool_name": tool_name,
-                                            "provided_params": provided_params
-                                        },
-                                        "timestamp": time.time()
-                                    })
+                                    return state
                                 else:
                                     # 参数仍不满足要求，继续等待
                                     state["intervention_request"]["missing_parameters"] = missing_params
@@ -639,19 +589,7 @@ class DecisionNode:
                 state["intervention_priority"] = None
                 state["status"] = "ready_for_execution"
                 
-                # 记录到执行日志
-                if "execution_log" not in state:
-                    state["execution_log"] = []
-                
-                state["execution_log"].append({
-                    "node": "decision",
-                    "action": "跳过工具",
-                    "details": {
-                        "step_id": step_id,
-                        "tool_name": tool_name
-                    },
-                    "timestamp": time.time()
-                })
+                return state
             
             return state
             

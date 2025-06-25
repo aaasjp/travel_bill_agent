@@ -3,6 +3,7 @@
 """
 import json
 import time
+import random
 from typing import Dict, Any, List, Optional
 from ..base import BaseTool
 import asyncio
@@ -22,18 +23,21 @@ class GetMyRectificationBillListTool(BaseTool):
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
-            "user_id": {
-                "type": "string",
-                "description": "用户ID"
+            "properties": {
+                "user_id": {
+                    "type": "string",
+                    "description": "用户ID"
+                },
+                "page": {
+                    "type": "integer",
+                    "description": "页码"
+                },
+                "size": {
+                    "type": "integer",
+                    "description": "每页大小"
+                }
             },
-            "page": {
-                "type": "integer",
-                "description": "页码"
-            },
-            "size": {
-                "type": "integer",
-                "description": "每页大小"
-            }
+            "required": ["user_id"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
@@ -41,8 +45,26 @@ class GetMyRectificationBillListTool(BaseTool):
         page = kwargs.get("page", 1)
         size = kwargs.get("size", 10)
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
+        
+        # 模拟异常情况（3%的概率）
+        if random.random() < 0.03:
+            raise Exception("获取整改单据列表失败：用户权限不足")
+        
+        # 模拟参数验证
+        if not user_id:
+            raise ValueError("用户ID不能为空")
+        
+        if page < 1:
+            raise ValueError("页码必须大于0")
+        
+        if size < 1 or size > 100:
+            raise ValueError("每页大小必须在1-100之间")
+        
+        # 模拟用户不存在
+        if user_id == "USER_NOT_EXIST":
+            raise Exception("用户不存在")
         
         mock_bills = []
         for i in range(min(size, 3)):  # 最多返回3条记录
@@ -82,17 +104,32 @@ class GetUnfinishedDebtBillTool(BaseTool):
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
-            "user_id": {
-                "type": "string",
-                "description": "用户ID"
-            }
+            "properties": {
+                "user_id": {
+                    "type": "string",
+                    "description": "用户ID"
+                }
+            },
+            "required": ["user_id"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
         user_id = kwargs.get("user_id")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
+        
+        # 模拟异常情况（2%的概率）
+        if random.random() < 0.02:
+            raise Exception("获取未还清借款单失败：系统维护中")
+        
+        # 模拟参数验证
+        if not user_id:
+            raise ValueError("用户ID不能为空")
+        
+        # 模拟用户不存在
+        if user_id == "USER_NOT_EXIST":
+            raise Exception("用户不存在")
         
         return {
             "success": True,
@@ -134,17 +171,36 @@ class GetAreaFieldByBillDefineIdTool(BaseTool):
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
-            "bill_define_id": {
-                "type": "string",
-                "description": "单据定义ID"
-            }
+            "properties": {
+                "bill_define_id": {
+                    "type": "string",
+                    "description": "单据定义ID"
+                }
+            },
+            "required": ["bill_define_id"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
         bill_define_id = kwargs.get("bill_define_id")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
+        
+        # 模拟异常情况（4%的概率）
+        if random.random() < 0.04:
+            raise Exception("获取区域字段信息失败：单据定义不存在")
+        
+        # 模拟参数验证
+        if not bill_define_id:
+            raise ValueError("单据定义ID不能为空")
+        
+        # 模拟无效的单据定义ID
+        if not bill_define_id.startswith("DEF_"):
+            raise ValueError("无效的单据定义ID格式")
+        
+        # 模拟单据定义不存在
+        if bill_define_id == "DEF_NOT_EXIST":
+            raise Exception("单据定义不存在")
         
         return {
             "success": True,
@@ -195,17 +251,36 @@ class GetBillDataAndTemplateTool(BaseTool):
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
-            "bill_main_id": {
-                "type": "string",
-                "description": "单据主ID"
-            }
+            "properties": {
+                "bill_main_id": {
+                    "type": "string",
+                    "description": "单据主ID"
+                }
+            },
+            "required": ["bill_main_id"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
         bill_main_id = kwargs.get("bill_main_id")
         
-        # Mock实现
-        await asyncio.sleep(0.05)
+        # 模拟网络延迟
+        await asyncio.sleep(0.1)
+        
+        # 模拟异常情况（5%的概率）
+        if random.random() < 0.05:
+            raise Exception("获取单据信息失败：单据不存在或已被删除")
+        
+        # 模拟参数验证
+        if not bill_main_id:
+            raise ValueError("单据主ID不能为空")
+        
+        # 模拟无效的单据ID
+        if not bill_main_id.startswith("BILL_"):
+            raise ValueError("无效的单据ID格式")
+        
+        # 模拟单据不存在
+        if bill_main_id == "BILL_NOT_EXIST":
+            raise Exception("单据不存在")
         
         return {
             "success": True,
@@ -215,23 +290,17 @@ class GetBillDataAndTemplateTool(BaseTool):
                     "bill_name": "差旅费报销单",
                     "bill_type": "TRAVEL_REIMBURSEMENT",
                     "status": "DRAFT",
-                    "create_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "total_amount": 2500.00
+                    "create_time": "2024-01-01 10:00:00",
+                    "total_amount": 3000.00
                 },
                 "template_info": {
-                    "template_id": "TPL_TRAVEL_001",
+                    "template_id": "TPL_001",
                     "template_name": "差旅费报销单模板",
                     "version": "1.0",
-                    "fields": [
-                        {"name": "applicant", "type": "string", "required": True},
-                        {"name": "department", "type": "string", "required": True},
-                        {"name": "travel_date", "type": "date", "required": True},
-                        {"name": "destination", "type": "string", "required": True},
-                        {"name": "purpose", "type": "string", "required": True}
-                    ]
+                    "areas": ["header", "expense_detail", "budget", "attachment"]
                 }
             },
-            "message": "单据信息和模板获取成功"
+            "message": "单据信息及模板获取成功"
         }
 
 
@@ -249,17 +318,40 @@ class CollectExpenseRecordInfoTool(BaseTool):
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
-            "application_id": {
-                "type": "string",
-                "description": "申请单ID"
-            }
+            "properties": {
+                "application_id": {
+                    "type": "string",
+                    "description": "申请单ID"
+                }
+            },
+            "required": ["application_id"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
         application_id = kwargs.get("application_id")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.1)
+        
+        # 模拟异常情况（4%的概率）
+        if random.random() < 0.04:
+            raise Exception("归集支出记录信息失败：申请单状态异常")
+        
+        # 模拟参数验证
+        if not application_id:
+            raise ValueError("申请单ID不能为空")
+        
+        # 模拟无效的申请单ID
+        if not application_id.startswith("APP_"):
+            raise ValueError("无效的申请单ID格式")
+        
+        # 模拟申请单不存在
+        if application_id == "APP_NOT_EXIST":
+            raise Exception("申请单不存在")
+        
+        # 模拟申请单状态不正确
+        if application_id == "APP_INVALID_STATUS":
+            raise Exception("申请单状态不正确，无法归集支出记录")
         
         return {
             "success": True,
@@ -309,17 +401,40 @@ class QueryTravelDaysTool(BaseTool):
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
-            "bill_id": {
-                "type": "string",
-                "description": "单据ID"
-            }
+            "properties": {
+                "bill_id": {
+                    "type": "string",
+                    "description": "单据ID"
+                }
+            },
+            "required": ["bill_id"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
         bill_id = kwargs.get("bill_id")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
+        
+        # 模拟异常情况（3%的概率）
+        if random.random() < 0.03:
+            raise Exception("查询补助天数失败：单据信息不完整")
+        
+        # 模拟参数验证
+        if not bill_id:
+            raise ValueError("单据ID不能为空")
+        
+        # 模拟无效的单据ID
+        if not bill_id.startswith("BILL_"):
+            raise ValueError("无效的单据ID格式")
+        
+        # 模拟单据不存在
+        if bill_id == "BILL_NOT_EXIST":
+            raise Exception("单据不存在")
+        
+        # 模拟单据类型不支持
+        if bill_id == "BILL_UNSUPPORTED_TYPE":
+            raise Exception("单据类型不支持补助天数计算")
         
         return {
             "success": True,
@@ -328,7 +443,12 @@ class QueryTravelDaysTool(BaseTool):
                 "travel_days": 5,
                 "subsidy_per_day": 100.00,
                 "total_subsidy": 500.00,
-                "calculation_basis": "按出差天数计算"
+                "calculation_basis": "按出差天数计算",
+                "travel_period": {
+                    "start_date": "2024-01-01",
+                    "end_date": "2024-01-05",
+                    "total_days": 5
+                }
             },
             "message": "补助天数查询成功"
         }
@@ -997,18 +1117,21 @@ class DeleteRowTool(BaseTool):
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
-            "bill_id": {
-                "type": "string",
-                "description": "单据ID"
+            "properties": {
+                "bill_id": {
+                    "type": "string",
+                    "description": "单据ID"
+                },
+                "area_name": {
+                    "type": "string",
+                    "description": "区域名称"
+                },
+                "row_index": {
+                    "type": "integer",
+                    "description": "行索引"
+                }
             },
-            "area_name": {
-                "type": "string",
-                "description": "区域名称"
-            },
-            "row_index": {
-                "type": "integer",
-                "description": "行索引"
-            }
+            "required": ["bill_id", "area_name", "row_index"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
@@ -1016,8 +1139,42 @@ class DeleteRowTool(BaseTool):
         area_name = kwargs.get("area_name")
         row_index = kwargs.get("row_index")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.1)
+        
+        # 模拟异常情况（6%的概率）
+        if random.random() < 0.06:
+            raise Exception("删除行数据失败：单据已被锁定")
+        
+        # 模拟参数验证
+        if not bill_id:
+            raise ValueError("单据ID不能为空")
+        
+        if not area_name:
+            raise ValueError("区域名称不能为空")
+        
+        if row_index is None or row_index < 0:
+            raise ValueError("行索引必须大于等于0")
+        
+        # 模拟无效的单据ID
+        if not bill_id.startswith("BILL_"):
+            raise ValueError("无效的单据ID格式")
+        
+        # 模拟单据不存在
+        if bill_id == "BILL_NOT_EXIST":
+            raise Exception("单据不存在")
+        
+        # 模拟单据状态不允许删除
+        if bill_id == "BILL_LOCKED":
+            raise Exception("单据已被锁定，无法删除数据")
+        
+        # 模拟行索引超出范围
+        if row_index > 100:
+            raise Exception("行索引超出范围")
+        
+        # 模拟区域不存在
+        if area_name not in ["header", "expense_detail", "budget", "attachment"]:
+            raise ValueError(f"不支持的区域名称: {area_name}")
         
         return {
             "success": True,
@@ -1046,17 +1203,65 @@ class SaveBillDataTool(BaseTool):
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
-            "bill_data": {
-                "type": "object",
-                "description": "单据数据"
-            }
+            "properties": {
+                "bill_data": {
+                    "type": "object",
+                    "description": "单据数据"
+                }
+            },
+            "required": ["bill_data"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
         bill_data = kwargs.get("bill_data", {})
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.2)
+        
+        # 模拟异常情况（8%的概率）
+        if random.random() < 0.08:
+            raise Exception("保存单据失败：数据验证失败")
+        
+        # 模拟参数验证
+        if not bill_data:
+            raise ValueError("单据数据不能为空")
+        
+        # 模拟数据验证失败
+        if not isinstance(bill_data, dict):
+            raise ValueError("单据数据必须是对象格式")
+        
+        # 模拟必填字段缺失
+        required_fields = ["bill_name", "bill_type", "total_amount"]
+        for field in required_fields:
+            if field not in bill_data:
+                raise ValueError(f"缺少必填字段: {field}")
+        
+        # 模拟金额格式错误
+        if "total_amount" in bill_data:
+            try:
+                amount = float(bill_data["total_amount"])
+                if amount < 0:
+                    raise ValueError("金额不能为负数")
+            except (ValueError, TypeError):
+                raise ValueError("金额格式不正确")
+        
+        # 模拟单据名称过长
+        if "bill_name" in bill_data and len(bill_data["bill_name"]) > 100:
+            raise ValueError("单据名称过长（最大100字符）")
+        
+        # 模拟单据类型不支持
+        if "bill_type" in bill_data:
+            supported_types = ["TRAVEL_REIMBURSEMENT", "EXPENSE_REPORT", "ADVANCE_APPLICATION"]
+            if bill_data["bill_type"] not in supported_types:
+                raise ValueError(f"不支持的单据类型: {bill_data['bill_type']}")
+        
+        # 模拟保存冲突
+        if bill_data.get("bill_id") == "BILL_CONFLICT":
+            raise Exception("单据保存冲突：其他用户正在编辑")
+        
+        # 模拟权限不足
+        if bill_data.get("bill_id") == "BILL_NO_PERMISSION":
+            raise Exception("权限不足：无法保存单据")
         
         return {
             "success": True,
@@ -1064,7 +1269,12 @@ class SaveBillDataTool(BaseTool):
                 "bill_id": bill_data.get("bill_id", f"BILL_{int(time())}"),
                 "save_time": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "status": "SAVED",
-                "version": "1.0"
+                "version": "1.0",
+                "save_result": {
+                    "total_fields": len(bill_data),
+                    "validated_fields": len(bill_data),
+                    "warnings": []
+                }
             },
             "message": "单据保存成功"
         }

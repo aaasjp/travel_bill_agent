@@ -9,7 +9,6 @@ from .decision import DecisionNode
 from .tool_execution import ToolExecutionNode
 from .human_intervention import HumanInterventionNode
 from .reflection import ReflectionNode
-from .retrieval import RetrievalNode
 
 __all__ = [
     'AnalysisNode',
@@ -17,6 +16,5 @@ __all__ = [
     'DecisionNode',
     'ToolExecutionNode',
     'HumanInterventionNode',
-    'ReflectionNode',
-    'RetrievalNode'
+    'ReflectionNode'
 ] 

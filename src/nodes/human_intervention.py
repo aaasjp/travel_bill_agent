@@ -288,7 +288,6 @@ class HumanInterventionNode:
         intervention_request = {
             "task_id": state.get("task_id", "unknown"),
             "user_input": state.get("user_input", ""),
-            "current_step": state.get("current_step", 0),
             "detected_repetition": reflection_result.get("detected_repetition", False),
             "task_completion_rate": reflection_result.get("task_completion_rate", 0),
             "success_aspects": reflection_result.get("success_aspects", []),
@@ -587,20 +586,6 @@ class HumanInterventionNode:
                     state["intervention_priority"] = None
                     state["status"] = "ready_for_execution"
                     
-                    # 记录到执行日志
-                    if "execution_log" not in state:
-                        state["execution_log"] = []
-                    
-                    state["execution_log"].append({
-                        "node": "human_intervention",
-                        "action": "参数补充反馈处理完成",
-                        "details": {
-                            "action": action,
-                            "provided_params": provided_params
-                        },
-                        "timestamp": time.time()
-                    })
-                    
                 elif action == "skip_tool":
                     # 跳过工具
                     intervention_request["feedback"] = feedback
@@ -620,19 +605,6 @@ class HumanInterventionNode:
                     state["intervention_priority"] = None
                     state["status"] = "ready_for_execution"
                     
-                    # 记录到执行日志
-                    if "execution_log" not in state:
-                        state["execution_log"] = []
-                    
-                    state["execution_log"].append({
-                        "node": "human_intervention",
-                        "action": "跳过工具反馈处理完成",
-                        "details": {
-                            "action": action
-                        },
-                        "timestamp": time.time()
-                    })
-                
                 elif action == "modify_plan":
                     # 修改计划
                     intervention_request["feedback"] = feedback
@@ -652,20 +624,6 @@ class HumanInterventionNode:
                     state["intervention_type"] = None
                     state["intervention_priority"] = None
                     state["status"] = "plan_modified"
-                    
-                    # 记录到执行日志
-                    if "execution_log" not in state:
-                        state["execution_log"] = []
-                    
-                    state["execution_log"].append({
-                        "node": "human_intervention",
-                        "action": "修改计划反馈处理完成",
-                        "details": {
-                            "action": action,
-                            "modifications": feedback.get("modifications", {})
-                        },
-                        "timestamp": time.time()
-                    })
             
             return state
             

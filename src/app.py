@@ -12,7 +12,6 @@ from .nodes.analysis import AnalysisNode
 from .nodes.planning import PlanningNode
 from .nodes.decision import DecisionNode
 from .nodes.tool_execution import ToolExecutionNode
-from .nodes.retrieval import RetrievalNode
 from .nodes.reflection import ReflectionNode
 from .nodes.human_intervention import HumanInterventionNode
 from .tool.registry import tool_registry
@@ -41,7 +40,6 @@ intent_node = AnalysisNode()
 planning_node = PlanningNode()
 decision_node = DecisionNode()
 tool_node = ToolExecutionNode()
-retrieval_node = RetrievalNode()
 reflection_node = ReflectionNode()
 human_intervention_node = HumanInterventionNode()
 
@@ -54,75 +52,31 @@ def create_workflow():
     workflow.add_node("planning", planning_node)
     workflow.add_node("decision", decision_node)
     workflow.add_node("tool_execution", tool_node)
-    workflow.add_node("retrieval", retrieval_node)
     workflow.add_node("reflection_node", reflection_node)  # 修改节点名称避免冲突
     workflow.add_node("human_intervention", human_intervention_node)
     
-    # 定义路由函数
-    def route_after_intent(state: State) -> Union[Literal["planning"], Literal["tool_execution"]]:
-        """意图分析后的路由逻辑
-        
-        如果有工具调用，执行工具调用；否则进行任务规划
-        """
-        has_tool_calls = "tool_calls" in state and state["tool_calls"]
-        next_node = "tool_execution" if has_tool_calls else "planning"
-        
-        if has_tool_calls:
-            return "tool_execution"
-        return "planning"
-    
-    def route_after_planning(state: State) -> Union[Literal["decision"], Literal["retrieval"]]:
-        """任务规划后的路由逻辑
-        
-        如果需要检索信息，转向检索节点；否则执行任务
-        """
-        needs_retrieval = state.get("need_retrieval", False)
-        next_node = "retrieval" if needs_retrieval else "decision"
-        
-        if needs_retrieval:
-            return "retrieval"
-        return "decision"
-    
-    def route_after_retrieval(state: State) -> Literal["planning"]:
-        """检索后的路由逻辑
-        
-        检索完成后返回任务规划
-        """
-        return "planning"
     
     def route_after_decision(state: State) -> Union[Literal["tool_execution"], Literal["reflection_node"]]:
         """执行后的路由逻辑
         
-        如果当前步骤需要工具执行，则执行工具；否则进行反思
+        如果有待执行的工具，则执行工具；否则进行反思
         """
         # 先检查任务是否已完成
         if state.get("is_complete", False) or state.get("steps_completed", False):
             return "reflection_node"
         
-        # 获取当前步骤
-        current_step = state.get("current_step", 0)
-        plan = state.get("plan", [])
-        
-        # 检查当前步骤是否存在且包含工具信息
-        if current_step < len(plan):
-            current_step_details = plan[current_step]
-            if isinstance(current_step_details, dict) and "tool" in current_step_details:
-                tool_info = current_step_details["tool"]
-                if isinstance(tool_info, dict) and "name" in tool_info:
-                    return "tool_execution"
+        # 检查是否有待执行的工具
+        pending_tools = state.get("pending_tools", [])
+        if pending_tools:
+            return "tool_execution"
         
         return "reflection_node"
     
     def route_after_tool(state: State) -> Union[Literal["decision"], Literal["reflection_node"]]:
         """工具执行后的路由逻辑
-        
-        如果有最终输出，进行反思；否则继续执行
+        直接转向反思节点
         """
-        is_complete = state.get("is_complete", False)
-        
-        if is_complete:
-            return "reflection_node"
-        return "decision"
+        return "reflection_node"
     
     def route_after_reflection(state: State) -> Union[Literal["planning"], Literal["decision"], Literal["human_intervention"], Literal["END"]]:
         """反思后的路由逻辑
@@ -173,21 +127,9 @@ def create_workflow():
          "planning"
     )
     
-    workflow.add_conditional_edges(
+    workflow.add_edge(
         "planning",
-        route_after_planning,
-        {
-            "decision": "decision",
-            "retrieval": "retrieval"
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "retrieval",
-        route_after_retrieval,
-        {
-            "planning": "planning"
-        }
+        "decision"
     )
     
     workflow.add_conditional_edges(
@@ -230,7 +172,7 @@ def create_workflow():
         }
     )
     
-    # 设置入口
+    # 设置入口点
     workflow.set_entry_point("analysis")
     
     return workflow.compile()

@@ -3,6 +3,8 @@
 """
 import json
 import time
+import asyncio
+import random
 from typing import Dict, Any, List, Optional
 from ..base import BaseTool
 
@@ -39,8 +41,30 @@ class InvoiceUploadTool(BaseTool):
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
-        # Mock实现
-        await asyncio.sleep(0.1)  # 模拟网络延迟
+        # 模拟网络延迟
+        await asyncio.sleep(0.1)
+        
+        # 模拟异常情况（5%的概率）
+        if random.random() < 0.05:
+            raise Exception("发票上传失败：文件格式不支持或文件损坏")
+        
+        # 模拟参数验证失败
+        file_data = kwargs.get("file_data", "")
+        file_name = kwargs.get("file_name", "")
+        file_type = kwargs.get("file_type", "")
+        
+        if not file_data:
+            raise ValueError("发票文件数据不能为空")
+        
+        if not file_name:
+            raise ValueError("发票文件名不能为空")
+        
+        if file_type not in ["jpg", "png", "pdf"]:
+            raise ValueError(f"不支持的文件类型: {file_type}")
+        
+        # 模拟文件大小限制
+        if len(file_data) > 10 * 1024 * 1024:  # 10MB
+            raise Exception("文件大小超过限制（最大10MB）")
         
         return {
             "success": True,
@@ -88,8 +112,20 @@ class GetDimensionDataTool(BaseTool):
     async def _execute(self, **kwargs) -> Dict[str, Any]:
         dimension_code = kwargs.get("dimension_code", "CURRENCY")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
+        
+        # 模拟异常情况（3%的概率）
+        if random.random() < 0.03:
+            raise Exception("获取维度数据失败：网络连接超时")
+        
+        # 模拟参数验证
+        if not dimension_code:
+            raise ValueError("维度代码不能为空")
+        
+        # 模拟不支持的维度代码
+        if dimension_code not in ["CURRENCY", "EXPENSE_TYPE", "DEPARTMENT", "PROJECT"]:
+            raise ValueError(f"不支持的维度代码: {dimension_code}")
         
         mock_data = {
             "CURRENCY": [
@@ -101,6 +137,16 @@ class GetDimensionDataTool(BaseTool):
                 {"code": "TRAVEL", "name": "差旅费"},
                 {"code": "MEAL", "name": "餐饮费"},
                 {"code": "TRANSPORT", "name": "交通费"}
+            ],
+            "DEPARTMENT": [
+                {"code": "IT", "name": "信息技术部"},
+                {"code": "HR", "name": "人力资源部"},
+                {"code": "FINANCE", "name": "财务部"}
+            ],
+            "PROJECT": [
+                {"code": "PROJ001", "name": "项目A"},
+                {"code": "PROJ002", "name": "项目B"},
+                {"code": "PROJ003", "name": "项目C"}
             ]
         }
         
@@ -137,8 +183,20 @@ class GetBusinessObjectTemplateTool(BaseTool):
     async def _execute(self, **kwargs) -> Dict[str, Any]:
         object_type = kwargs.get("object_type", "INVOICE")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
+        
+        # 模拟异常情况（2%的概率）
+        if random.random() < 0.02:
+            raise Exception("获取业务对象模板失败：模板不存在或已过期")
+        
+        # 模拟参数验证
+        if not object_type:
+            raise ValueError("业务对象类型不能为空")
+        
+        # 模拟不支持的模板类型
+        if object_type not in ["INVOICE", "EXPENSE_RECORD", "REIMBURSEMENT_BILL"]:
+            raise ValueError(f"不支持的业务对象类型: {object_type}")
         
         return {
             "success": True,
@@ -190,30 +248,42 @@ class GetHistoryVersionFormatTool(BaseTool):
         bill_id = kwargs.get("bill_id")
         version = kwargs.get("version", "1.0")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
+        
+        # 模拟异常情况（4%的概率）
+        if random.random() < 0.04:
+            raise Exception("获取历史版本格式失败：单据不存在或无历史版本")
+        
+        # 模拟参数验证
+        if not bill_id:
+            raise ValueError("单据ID不能为空")
+        
+        # 模拟无效的单据ID
+        if not bill_id.startswith("BILL_"):
+            raise ValueError("无效的单据ID格式")
         
         return {
             "success": True,
             "data": {
                 "bill_id": bill_id,
                 "version": version,
-                "format_design": {
+                "format_data": {
+                    "template_version": "1.2",
+                    "fields": [
+                        {"name": "field1", "type": "string", "required": True},
+                        {"name": "field2", "type": "number", "required": False}
+                    ],
                     "layout": "standard",
-                    "sections": ["header", "body", "footer"],
-                    "fields": ["title", "amount", "date", "approver"]
-                },
-                "history_changes": [
-                    {"version": "1.0", "change_date": "2024-01-01", "description": "初始版本"},
-                    {"version": "1.1", "change_date": "2024-01-15", "description": "增加字段"}
-                ]
+                    "created_time": "2024-01-01 10:00:00"
+                }
             },
-            "message": "历史版本格式设计获取成功"
+            "message": "历史版本格式获取成功"
         }
 
 
 class GetUserCurrencyTool(BaseTool):
-    """获取用户所属维度账户架构货币工具"""
+    """获取用户货币工具"""
     
     @property
     def name(self) -> str:
@@ -221,7 +291,7 @@ class GetUserCurrencyTool(BaseTool):
     
     @property
     def description(self) -> str:
-        return "获取用户所属维度账户架构货币"
+        return "获取用户默认货币"
     
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
@@ -238,23 +308,26 @@ class GetUserCurrencyTool(BaseTool):
     async def _execute(self, **kwargs) -> Dict[str, Any]:
         user_id = kwargs.get("user_id")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
+        
+        # 模拟异常情况（1%的概率）
+        if random.random() < 0.01:
+            raise Exception("获取用户货币失败：用户不存在")
+        
+        # 模拟参数验证
+        if not user_id:
+            raise ValueError("用户ID不能为空")
         
         return {
             "success": True,
             "data": {
                 "user_id": user_id,
-                "currency": {
-                    "code": "CNY",
-                    "name": "人民币",
-                    "symbol": "¥",
-                    "exchange_rate": 1.0
-                },
-                "account_architecture": {
-                    "org_code": "HAIER_CN",
-                    "org_name": "海尔集团中国区",
-                    "dimension_path": "/HAIER/CN"
+                "default_currency": "CNY",
+                "available_currencies": ["CNY", "USD", "EUR"],
+                "exchange_rate": {
+                    "USD": 0.14,
+                    "EUR": 0.13
                 }
             },
             "message": "用户货币信息获取成功"
@@ -262,7 +335,7 @@ class GetUserCurrencyTool(BaseTool):
 
 
 class GetInvoiceBusinessObjectTool(BaseTool):
-    """获取发票业务对象数据工具"""
+    """获取发票业务对象工具"""
     
     @property
     def name(self) -> str:
@@ -270,51 +343,61 @@ class GetInvoiceBusinessObjectTool(BaseTool):
     
     @property
     def description(self) -> str:
-        return "获取发票业务对象数据"
+        return "获取发票业务对象信息"
     
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
             "properties": {
-                "data_id": {
+                "invoice_id": {
                     "type": "string",
-                    "description": "数据ID"
+                    "description": "发票ID"
                 }
             },
-            "required": ["data_id"]
+            "required": ["invoice_id"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
-        data_id = kwargs.get("data_id")
+        invoice_id = kwargs.get("invoice_id")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
+        
+        # 模拟异常情况（6%的概率）
+        if random.random() < 0.06:
+            raise Exception("获取发票业务对象失败：发票不存在或已被删除")
+        
+        # 模拟参数验证
+        if not invoice_id:
+            raise ValueError("发票ID不能为空")
+        
+        # 模拟无效的发票ID
+        if not invoice_id.startswith("INV_"):
+            raise ValueError("无效的发票ID格式")
         
         return {
             "success": True,
             "data": {
-                "data_id": data_id,
-                "invoice_info": {
-                    "invoice_code": "12345678901234567890",
-                    "invoice_number": "12345678",
-                    "invoice_date": "2024-01-15",
-                    "amount": 1000.00,
-                    "tax_amount": 130.00,
-                    "total_amount": 1130.00
-                },
+                "invoice_id": invoice_id,
                 "business_object": {
                     "object_type": "INVOICE",
-                    "object_id": f"BO_{data_id}",
-                    "status": "VERIFIED",
-                    "create_time": time.strftime("%Y-%m-%d %H:%M:%S")
+                    "object_id": f"OBJ_{invoice_id}",
+                    "status": "ACTIVE",
+                    "create_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                    "update_time": time.strftime("%Y-%m-%d %H:%M:%S")
+                },
+                "metadata": {
+                    "company": "海尔集团",
+                    "department": "财务部",
+                    "user": "张三"
                 }
             },
-            "message": "发票业务对象数据获取成功"
+            "message": "发票业务对象获取成功"
         }
 
 
 class InvoiceVerificationTool(BaseTool):
-    """发票查验并保存业务对象工具"""
+    """发票验证工具"""
     
     @property
     def name(self) -> str:
@@ -322,47 +405,70 @@ class InvoiceVerificationTool(BaseTool):
     
     @property
     def description(self) -> str:
-        return "发票查验并保存业务对象"
+        return "验证发票真伪和有效性"
     
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
             "properties": {
-                "invoice_data": {
-                    "type": "object",
-                    "description": "发票数据"
+                "invoice_code": {
+                    "type": "string",
+                    "description": "发票代码"
+                },
+                "invoice_number": {
+                    "type": "string",
+                    "description": "发票号码"
                 }
             },
-            "required": ["invoice_data"]
+            "required": ["invoice_code", "invoice_number"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
-        invoice_data = kwargs.get("invoice_data", {})
+        invoice_code = kwargs.get("invoice_code")
+        invoice_number = kwargs.get("invoice_number")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.1)
+        
+        # 模拟异常情况（8%的概率）
+        if random.random() < 0.08:
+            raise Exception("发票验证失败：税务系统连接超时")
+        
+        # 模拟参数验证
+        if not invoice_code:
+            raise ValueError("发票代码不能为空")
+        
+        if not invoice_number:
+            raise ValueError("发票号码不能为空")
+        
+        # 模拟无效的发票代码格式
+        if len(invoice_code) != 20:
+            raise ValueError("发票代码格式不正确（应为20位）")
+        
+        # 模拟重复发票
+        if invoice_code == "12345678901234567890" and invoice_number == "12345678":
+            raise Exception("发票已存在，不能重复上传")
         
         return {
             "success": True,
             "data": {
-                "verification_result": {
+                "invoice_code": invoice_code,
+                "invoice_number": invoice_number,
+                "verification_result": "VALID",
+                "verification_time": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "details": {
                     "is_valid": True,
-                    "verification_code": "SUCCESS",
-                    "verification_message": "发票查验通过"
-                },
-                "saved_object": {
-                    "object_id": f"BO_{int(time.time())}",
-                    "object_type": "INVOICE",
-                    "save_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-                    "status": "SAVED"
+                    "is_duplicate": False,
+                    "tax_authority": "国家税务总局",
+                    "verification_source": "税务系统"
                 }
             },
-            "message": "发票查验并保存成功"
+            "message": "发票验证成功"
         }
 
 
 class GetPendingInvoiceTool(BaseTool):
-    """获取待处理的支出记录发票工具"""
+    """获取待处理发票工具"""
     
     @property
     def name(self) -> str:
@@ -370,7 +476,7 @@ class GetPendingInvoiceTool(BaseTool):
     
     @property
     def description(self) -> str:
-        return "获取待处理的支出记录发票"
+        return "获取待处理的发票列表"
     
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
@@ -379,6 +485,10 @@ class GetPendingInvoiceTool(BaseTool):
                 "user_id": {
                     "type": "string",
                     "description": "用户ID"
+                },
+                "status": {
+                    "type": "string",
+                    "description": "发票状态"
                 },
                 "page": {
                     "type": "integer",
@@ -394,20 +504,36 @@ class GetPendingInvoiceTool(BaseTool):
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
         user_id = kwargs.get("user_id")
+        status = kwargs.get("status", "PENDING")
         page = kwargs.get("page", 1)
         size = kwargs.get("size", 10)
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
         
+        # 模拟异常情况（3%的概率）
+        if random.random() < 0.03:
+            raise Exception("获取待处理发票失败：用户权限不足")
+        
+        # 模拟参数验证
+        if not user_id:
+            raise ValueError("用户ID不能为空")
+        
+        if page < 1:
+            raise ValueError("页码必须大于0")
+        
+        if size < 1 or size > 100:
+            raise ValueError("每页大小必须在1-100之间")
+        
+        # 模拟数据
         mock_invoices = []
-        for i in range(min(size, 5)):  # 最多返回5条记录
+        for i in range(min(size, 5)):
             mock_invoices.append({
                 "invoice_id": f"INV_{int(time.time())}_{i}",
                 "invoice_code": f"1234567890123456789{i}",
                 "invoice_number": f"1234567{i}",
-                "amount": 100.00 * (i + 1),
-                "status": "PENDING",
+                "amount": 1000.00 * (i + 1),
+                "status": status,
                 "upload_time": time.strftime("%Y-%m-%d %H:%M:%S")
             })
         
@@ -417,14 +543,15 @@ class GetPendingInvoiceTool(BaseTool):
                 "invoices": mock_invoices,
                 "total": len(mock_invoices),
                 "page": page,
-                "size": size
+                "size": size,
+                "has_more": len(mock_invoices) == size
             },
-            "message": "待处理发票获取成功"
+            "message": "待处理发票列表获取成功"
         }
 
 
 class GetExpenseTypeMappingTool(BaseTool):
-    """发票事项集合到支出类型维度映射工具"""
+    """获取费用类型映射工具"""
     
     @property
     def name(self) -> str:
@@ -432,45 +559,58 @@ class GetExpenseTypeMappingTool(BaseTool):
     
     @property
     def description(self) -> str:
-        return "发票事项集合到支出类型维度映射"
+        return "获取费用类型映射关系"
     
     @property
     def parameters(self) -> Dict[str, Dict[str, Any]]:
         return {
             "properties": {
-                "invoice_items": {
-                    "type": "array",
-                    "description": "发票事项列表"
+                "source_type": {
+                    "type": "string",
+                    "description": "源费用类型"
                 }
             },
-            "required": ["invoice_items"]
+            "required": ["source_type"]
         }
     
     async def _execute(self, **kwargs) -> Dict[str, Any]:
-        invoice_items = kwargs.get("invoice_items", [])
+        source_type = kwargs.get("source_type")
         
-        # Mock实现
+        # 模拟网络延迟
         await asyncio.sleep(0.05)
         
-        mapping_result = []
-        for item in invoice_items:
-            mapping_result.append({
-                "invoice_item": item,
-                "expense_type": "TRAVEL",
-                "dimension_code": "EXPENSE_TYPE",
-                "dimension_value": "差旅费",
-                "mapping_confidence": 0.95
-            })
+        # 模拟异常情况（2%的概率）
+        if random.random() < 0.02:
+            raise Exception("获取费用类型映射失败：映射规则不存在")
+        
+        # 模拟参数验证
+        if not source_type:
+            raise ValueError("源费用类型不能为空")
+        
+        # 模拟映射数据
+        mapping_data = {
+            "TRAVEL": {
+                "target_type": "差旅费",
+                "category": "TRAVEL_EXPENSE",
+                "rules": ["需要出差申请", "需要住宿发票"]
+            },
+            "MEAL": {
+                "target_type": "餐饮费",
+                "category": "MEAL_EXPENSE",
+                "rules": ["需要用餐发票", "单次限额200元"]
+            },
+            "TRANSPORT": {
+                "target_type": "交通费",
+                "category": "TRANSPORT_EXPENSE",
+                "rules": ["需要交通发票", "需要行程记录"]
+            }
+        }
+        
+        if source_type not in mapping_data:
+            raise ValueError(f"不支持的源费用类型: {source_type}")
         
         return {
             "success": True,
-            "data": {
-                "mappings": mapping_result,
-                "total_mapped": len(mapping_result)
-            },
-            "message": "支出类型维度映射获取成功"
-        }
-
-
-# 导入asyncio模块
-import asyncio 
+            "data": mapping_data[source_type],
+            "message": "费用类型映射获取成功"
+        } 

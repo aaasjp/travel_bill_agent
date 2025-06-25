@@ -36,7 +36,6 @@ class State(TypedDict, total=False):
     plan: List[Dict[str, Any]]  # 任务执行计划
     step_tools: List[Dict[str, Any]]  # 每个步骤选择的工具信息
     execution_log: List[Dict[str, Any]]  # 执行日志
-    current_step: int  # 当前执行步骤
     results: Dict[str, Any]  # 执行结果
     errors: List[Dict[str, Any]]  # 错误信息
     
@@ -56,9 +55,6 @@ class State(TypedDict, total=False):
     # 反思相关
     reflection: Dict[str, Any]  # 反思结果
     reflection_result: Dict[str, Any]  # 详细反思分析结果
-    
-    # 检索相关
-    need_retrieval: bool  # 是否需要检索信息
     
     # 任务完成标志
     is_complete: bool  # 当前步骤是否完成
@@ -110,7 +106,6 @@ def create_state(
         
         # 执行信息
         "execution_log": [],
-        "current_step": 0,
         "results": {},
         "errors": [],
         
@@ -119,7 +114,6 @@ def create_state(
         "reflection_result": {},
         
         # 状态控制
-        "need_retrieval": False,
         "is_complete": False,
         "final_output": "",
         
