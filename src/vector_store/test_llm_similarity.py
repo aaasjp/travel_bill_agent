@@ -30,7 +30,7 @@ def test_llm_similarity_search():
     try:
         # 先进行普通搜索查看是否有数据
         results = chroma_store.search(
-            query_texts=["差旅报销"],
+            query_texts=[""],
             n_results=5,
             use_llm_similarity=False
         )
@@ -44,7 +44,7 @@ def test_llm_similarity_search():
         # 测试1: 只使用向量相似度过滤
         print("\n=== 测试1: 只使用向量相似度过滤 ===")
         vector_results = chroma_store.search(
-            query_texts=["差旅报销流程"],
+            query_texts=["流程"],
             n_results=3,
             use_llm_similarity=False,
             similarity_threshold=0.5
@@ -55,7 +55,7 @@ def test_llm_similarity_search():
         # 测试2: 向量过滤 + 大模型优化
         print("\n=== 测试2: 向量过滤 + 大模型优化 ===")
         llm_results = chroma_store.search(
-            query_texts=["差旅报销流程"],
+            query_texts=["流程"],
             n_results=3,
             use_llm_similarity=True,
             similarity_threshold=0.5
@@ -106,7 +106,7 @@ def test_llm_similarity_search():
         # 测试3: 不使用相似度阈值，只使用大模型优化
         print("\n=== 测试3: 不使用相似度阈值，只使用大模型优化 ===")
         llm_only_results = chroma_store.search(
-            query_texts=["差旅报销流程"],
+            query_texts=["流程"],
             n_results=3,
             use_llm_similarity=True,
             similarity_threshold=0.0  # 不使用阈值过滤

@@ -156,7 +156,7 @@ class StatusQueryTool(BaseTool):
                 continue
             
             # 创建报销单对象
-            reimbursement_types = ["差旅报销", "日常报销", "招待报销", "会议报销"]
+            reimbursement_types = ["", "日常报销", "招待报销", "会议报销"]
             bill = {
                 "bill_id": f"REIM-{random.randint(10000, 99999)}",
                 "bill_number": f"BX-{created_date.strftime('%Y%m%d')}-{random.randint(1000, 9999)}",
@@ -363,7 +363,7 @@ class StatusQueryTool(BaseTool):
         status = random.choices(statuses, weights=weights, k=1)[0]
         
         # 创建报销单对象
-        reimbursement_types = ["差旅报销", "日常报销", "招待报销", "会议报销"]
+        reimbursement_types = ["", "日常报销", "招待报销", "会议报销"]
         bill = {
             "bill_id": bill_id,
             "bill_number": f"BX-{created_at.strftime('%Y%m%d')}-{random.randint(1000, 9999)}",

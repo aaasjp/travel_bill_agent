@@ -2,7 +2,7 @@
 
 ## 📋 概述
 
-本文档详细描述了在差旅报销智能体中集成RAG（Retrieval-Augmented Generation）功能的完整实现方案。RAG系统将为智能体提供基于知识库的上下文增强能力，显著提升回答准确性和政策合规性。
+本文档详细描述了在智能体中集成RAG（Retrieval-Augmented Generation）功能的完整实现方案。RAG系统将为智能体提供基于知识库的上下文增强能力，显著提升回答准确性和政策合规性。
 
 ## 🎯 实现目标
 
@@ -216,7 +216,7 @@ class KnowledgeManager:
             except:
                 self.collection = self.client.create_collection(
                     name=self.config.COLLECTION_NAME,
-                    metadata={"description": "差旅报销知识库"}
+                    metadata={"description": "知识库"}
                 )
                 logger.info(f"创建新集合: {self.config.COLLECTION_NAME}")
                 
@@ -328,7 +328,7 @@ class KnowledgeManager:
             self.client.delete_collection(self.config.COLLECTION_NAME)
             self.collection = self.client.create_collection(
                 name=self.config.COLLECTION_NAME,
-                metadata={"description": "差旅报销知识库"}
+                metadata={"description": "知识库"}
             )
             logger.info("知识库已清空")
         except Exception as e:
@@ -730,7 +730,7 @@ class IntentAnalysisNode:
                 tools_desc += f"{i}. {tool['name']}: {tool['description']}\n"
                 tools_desc += f"   参数: {json.dumps(tool['parameters'], ensure_ascii=False)}\n\n"
         
-        return f"""你是一个专业的差旅报销助手，负责理解用户的报销需求并提供帮助。
+        return f"""你是一个专业的助手，负责理解用户的报销需求并提供帮助。
 
 【相关知识和政策】:
 {knowledge_context}
@@ -794,7 +794,7 @@ class TaskPlanningNode:
         
         # 更新提示模板以包含RAG上下文
         self.prompt = ChatPromptTemplate.from_messages([
-            ("system", """你是一个专业的差旅报销规划助手。
+            ("system", """你是一个专业的规划助手。
 
 【业务流程说明】:
 {business_process_prompt}
@@ -1036,4 +1036,4 @@ langgraph dev --port 2024
 4. **灵活的配置管理** - 支持个性化参数调优
 5. **完善的缓存机制** - 提升系统性能和用户体验
 
-通过此方案，差旅报销智能体将具备强大的知识推理能力，为用户提供更准确、更合规的服务体验。
+通过此方案，智能体将具备强大的知识推理能力，为用户提供更准确、更合规的服务体验。

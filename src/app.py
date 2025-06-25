@@ -25,7 +25,7 @@ load_dotenv()
 if "LANGCHAIN_TRACING_V2" not in os.environ:
     os.environ["LANGCHAIN_TRACING_V2"] = "true"
 if "LANGCHAIN_PROJECT" not in os.environ:
-    os.environ["LANGCHAIN_PROJECT"] = "差旅报销智能体"  # 可自定义项目名称
+    os.environ["LANGCHAIN_PROJECT"] = "智能体"  # 可自定义项目名称
 
 # 检查 LangSmith 配置
 try:
@@ -34,7 +34,7 @@ try:
 except Exception as e:
     langsmith_enabled = False
 
-app = FastAPI(title="差旅报销智能体")
+app = FastAPI(title="智能体")
 
 # 初始化节点
 intent_node = AnalysisNode()
@@ -68,22 +68,26 @@ def create_workflow():
     def route_after_planning(state: State) -> Union[Literal["conversation"], Literal["decision"]]:
         """规划后的路由逻辑
         
-        如果plan为空，则进入对话节点；否则进入决策节点
+        根据status属性决定下一步：conversation_ready进入对话节点，decision_ready进入决策节点
         """
-        plan = state.get("plan", [])
-        if not plan or len(plan) == 0:
+        status = state.get("status", "")
+        if status == "conversation_ready":
             return "conversation"
-        else:
+        elif status == "decision_ready":
             return "decision"
+    
+    def route_after_conversation(state: State) -> Literal["END"]:
+        """对话后的路由逻辑
+        
+        对话完成后直接结束
+        """
+        return "END"
     
     def route_after_decision(state: State) -> Union[Literal["tool_execution"], Literal["reflection_node"]]:
         """执行后的路由逻辑
         
         如果有待执行的工具，则执行工具；否则进行反思
         """
-        # 先检查任务是否已完成
-        if state.get("is_complete", False) or state.get("steps_completed", False):
-            return "reflection_node"
         
         # 检查是否有待执行的工具
         pending_tools = state.get("pending_tools", [])
@@ -142,12 +146,7 @@ def create_workflow():
         else:
             return "END"
     
-    def route_after_conversation(state: State) -> Literal["END"]:
-        """对话后的路由逻辑
-        
-        对话完成后直接结束
-        """
-        return "END"
+    
     
     # 设置边和条件路由
     workflow.add_edge(
@@ -227,7 +226,7 @@ tasks_store = {}
 
 @app.post("/process")
 async def process_expense(input_data: Dict[str, Any]):
-    """处理差旅报销请求"""
+    """处理智能体请求"""
     try:
         # 获取客户端ID
         client_id = input_data.get("client_id", "default")
@@ -285,7 +284,7 @@ async def process_expense(input_data: Dict[str, Any]):
             try:
                 # 构建 LangSmith 项目链接
                 langsmith_endpoint = os.environ.get('LANGCHAIN_ENDPOINT', 'https://smith.langchain.com')
-                project_name = os.environ.get('LANGCHAIN_PROJECT', '差旅报销智能体')
+                project_name = os.environ.get('LANGCHAIN_PROJECT', '智能体')
                 
                 # 提供项目链接
                 project_url = f"{langsmith_endpoint}/projects/{project_name}"
@@ -432,11 +431,11 @@ async def get_tools():
 async def root():
     """返回基本信息和指引"""
     info = {
-        "name": "差旅报销智能体",
+        "name": "智能体",
         "version": "1.0.0",
         "status": "运行中",
         "endpoints": {
-            "process": "/process - 处理差旅报销请求",
+            "process": "/process - 处理智能体请求",
             "status": "/status/{task_id} - 获取任务状态",
             "human_feedback": "/human_feedback/{task_id} - 提供人工反馈",
             "tools": "/tools - 获取可用工具列表"

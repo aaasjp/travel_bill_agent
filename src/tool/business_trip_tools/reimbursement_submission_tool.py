@@ -169,7 +169,7 @@ class ReimbursementSubmissionTool(BaseTool):
         total_amount = round(random.uniform(100, 10000), 2)
         
         # 创建模拟报销单
-        reimbursement_types = ["差旅报销", "日常报销", "招待报销", "会议报销"]
+        reimbursement_types = ["", "日常报销", "招待报销", "会议报销"]
         departments = ["技术部", "市场部", "财务部", "人力资源部", "销售部"]
         
         bill = {

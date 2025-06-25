@@ -59,8 +59,7 @@ class State(TypedDict, total=False):
     # 对话相关
     conversation_response: Optional[str]  # 对话节点的回复内容
     
-    # 任务完成标志
-    is_complete: bool  # 当前步骤是否完成
+    # 最终输出
     final_output: str  # 最终输出结果
     
     # 时间信息
@@ -68,7 +67,7 @@ class State(TypedDict, total=False):
     updated_at: datetime  # 更新时间
     
     # 人工干预相关
-    status: str  # 可能的值: running, waiting_for_human, processing, completed, error
+    status: str  # 可能的值: running, waiting_for_human, processing, completed, error, conversation_ready, decision_ready
     needs_human_intervention: bool  # 是否需要人工干预
     intervention_request: Optional[Dict[str, Any]]  # 人工干预请求
     intervention_response: Optional[Dict[str, Any]]  # 人工干预响应
@@ -119,8 +118,7 @@ def create_state(
         # 对话相关
         "conversation_response": None,
         
-        # 状态控制
-        "is_complete": False,
+        # 最终输出  
         "final_output": "",
         
         # 时间戳

@@ -24,7 +24,7 @@ def test_similarity_threshold():
     try:
         # 添加一些测试文档
         test_documents = [
-            "差旅报销需要提供发票和行程单",
+            "需要提供发票和行程单",
             "住宿费用报销标准是每天300元",
             "交通费用包括机票、火车票和出租车费",
             "餐饮费用按实际发生金额报销",
@@ -47,7 +47,7 @@ def test_similarity_threshold():
         print("✅ 测试文档添加成功")
         
         # 测试不同相似度阈值
-        query = "差旅报销流程"
+        query = "流程"
         
         print(f"\n🔍 查询: {query}")
         print("-" * 50)

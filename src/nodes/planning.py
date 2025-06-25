@@ -79,6 +79,7 @@ class PlanningNode:
                 }}
             }}
             
+            !注意，如果用户只是做咨询，请直接返回空数组[]，不要生成任何计划。
             """)
         ])
     
@@ -221,6 +222,7 @@ class PlanningNode:
 
             # 查询向量知识库
             knowledge_content = self._query_knowledge_base(query)
+            state["knowledge_content"] = knowledge_content
             
             # 获取可用工具描述
             tools_description = self._get_available_tools_description()
@@ -298,6 +300,12 @@ class PlanningNode:
             # 更新计划为验证后的版本
             state["plan"] = validated_plan
             
+            # 根据plan状态设置status
+            if not validated_plan or len(validated_plan) == 0:
+                state["status"] = "conversation_ready"  # 计划为空，准备进入对话节点
+            else:
+                state["status"] = "decision_ready"  # 计划不为空，准备进入决策节点
+            
             return state
             
         except Exception as e:
@@ -306,7 +314,8 @@ class PlanningNode:
             print(f"----task planning llm error: {e}")
             # 出错时设置空计划
             state["plan"] = []
-            return state 
+            state["status"] = "conversation_ready"  # 出错时也设置为准备进入对话节点
+            return state
 
     def _convert_intent_to_query(self, intent: str) -> str:
         """将用户意图转换为查询语句
@@ -324,8 +333,8 @@ class PlanningNode:
                 intent = str(intent)
                 
             # 创建意图转换查询的提示模板
-            intent_to_query_prompt = """你是一个专业的差旅报销查询助手。你的任务是将用户的意图转换为适合进行知识库查询的语句。
-请根据用户的意图，生成一个查询语句，用于在差旅报销相关的知识库中搜索相关信息。
+            intent_to_query_prompt = """你是一个专业的查询助手。你的任务是将用户的意图转换为适合进行知识库查询的语句。
+请根据用户的意图，生成一个查询语句，用于在相关的知识库中搜索相关信息。
 
 要求：
 1. 查询语句应该包含关键信息，有利于更详细的信息查询

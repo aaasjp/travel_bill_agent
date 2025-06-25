@@ -1,7 +1,7 @@
 """
 LangGraph 工作流可视化工具
 
-此脚本生成差旅报销智能体工作流的可视化图表。
+此脚本生成智能体工作流的可视化图表。
 """
 
 import os
@@ -86,7 +86,7 @@ def create_workflow_graph():
     else:
         nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=9)
     
-    plt.title('差旅报销智能体工作流', fontsize=15, fontproperties=font if font else None)
+    plt.title('智能体工作流', fontsize=15, fontproperties=font if font else None)
     plt.axis('off')
     
     # 保存图片

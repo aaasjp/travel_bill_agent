@@ -24,7 +24,7 @@ sys.path.insert(0, str(project_root))
 from src.app import create_app
 
 if __name__ == "__main__":
-    print("启动差旅报销智能体...")
+    print("启动智能体...")
     print("已禁用ChromaDB遥测功能")
     app = create_app()
     app.run(debug=True, host="0.0.0.0", port=8000) 

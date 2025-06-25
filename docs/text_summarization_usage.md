@@ -74,7 +74,7 @@ store = ChromaStore()
 
 # 要总结的文本内容
 text_content = """
-这是一个关于差旅报销政策的详细说明文档。
+这是一个关于政策的详细说明文档。
 包含了报销标准、流程、注意事项等重要信息。
 """
 
@@ -112,12 +112,12 @@ for summary in result['successful_summaries']:
     print("-" * 50)
 ```
 
-### 在差旅报销系统中的应用
+### 在系统中的应用
 
 ```python
 # 总结报销政策文本
 policy_text = """
-差旅报销政策详细说明...
+政策详细说明...
 """
 
 policy_result = store.summarize_text_content(
@@ -196,7 +196,7 @@ table_result = store.summarize_text_content(
 
 # 政策文档总结
 policy_content = """
-公司差旅报销政策...
+公司政策...
 """
 
 policy_result = store.summarize_text_content(

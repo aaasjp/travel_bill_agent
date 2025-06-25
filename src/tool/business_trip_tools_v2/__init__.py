@@ -1,6 +1,6 @@
 """
-国内差旅报销API工具集 v2
-包含所有差旅报销相关的API接口mock实现
+国内API工具集 v2
+包含所有相关的API接口mock实现
 """
 
 from .invoice_upload_tools import *

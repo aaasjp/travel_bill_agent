@@ -40,7 +40,7 @@ chroma_store.create_collection("your_collection_name")
 
 # 使用大模型进行相似性搜索和排序优化
 results = chroma_store.search(
-    query_texts=["差旅报销流程"],
+    query_texts=["流程"],
     n_results=5,
     use_llm_similarity=True,  # 启用大模型相似性判断
     similarity_threshold=0.7   # 设置相似度阈值
@@ -74,7 +74,7 @@ results = chroma_store.search(
 ```python
 # 先进行严格的向量过滤，再用大模型优化排序
 results = chroma_store.search(
-    query_texts=["如何申请差旅报销？"],
+    query_texts=["如何申请？"],
     n_results=3,
     use_llm_similarity=True,
     similarity_threshold=0.8  # 高阈值确保基础相关性

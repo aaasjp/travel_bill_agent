@@ -19,7 +19,7 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 
 # LangSmith配置
 LANGSMITH_API_KEY = os.environ.get("LANGCHAIN_API_KEY", "")
-LANGSMITH_PROJECT = os.environ.get("LANGCHAIN_PROJECT", "差旅报销智能体")
+LANGSMITH_PROJECT = os.environ.get("LANGCHAIN_PROJECT", "智能体")
 LANGSMITH_ENDPOINT = os.environ.get("LANGCHAIN_ENDPOINT", "https://api.smith.langchain.com")
 
 # 工具配置

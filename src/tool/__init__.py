@@ -1,5 +1,5 @@
 """
-差旅报销智能体的工具包
+智能体的工具包
 """
 from .registry import tool_registry
 from .base import BaseTool

@@ -55,7 +55,7 @@ LangGraph 配置文件定义了智能体的部署配置：
 
 ## 功能特点
 
-- 意图分析：自动识别用户的报销意图和要求
+- 意图分析：自动识别用户的意图和要求
 - 任务规划：将复杂的报销任务分解为可执行步骤
 - 工具调用：支持多种报销相关工具，如状态查询、表单生成等
 - LangSmith 集成：提供工作流可视化和执行监控
@@ -84,7 +84,7 @@ API_KEY=your_api_key_here
 # LangSmith 配置（可选，用于监控和可视化）
 LANGCHAIN_API_KEY=your_langsmith_api_key_here
 LANGCHAIN_TRACING_V2=true
-LANGCHAIN_PROJECT=差旅报销智能体
+LANGCHAIN_PROJECT=智能体
 LANGCHAIN_ENDPOINT=https://api.smith.langchain.com
 ```
 
@@ -172,7 +172,7 @@ https://smith.langchain.com/studio/?baseUrl=http://127.0.0.1:2024
 启用 LangSmith 后，您可以：
 
 1. **查看项目页面**：
-   - 访问 https://smith.langchain.com/projects/差旅报销智能体
+   - 访问 https://smith.langchain.com/projects/智能体
    - 查看所有执行追踪记录
 
 2. **分析执行轨迹**：
