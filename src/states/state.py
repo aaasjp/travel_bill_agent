@@ -67,8 +67,7 @@ class State(TypedDict, total=False):
     updated_at: datetime  # 更新时间
     
     # 人工干预相关
-    status: str  # 可能的值: running, waiting_for_human, processing, completed, error, conversation_ready, decision_ready
-    needs_human_intervention: bool  # 是否需要人工干预
+    status: str  # 可能的值: running, waiting_for_human, processing, completed, error, conversation_ready, decision_ready, ready_for_execution, tools_completed, tool_execution_failed, conversation_completed, conversation_error, plan_modified
     intervention_request: Optional[Dict[str, Any]]  # 人工干预请求
     intervention_response: Optional[Dict[str, Any]]  # 人工干预响应
     intervention_type: Optional[str]  # 介入类型：信息补充、决策确认、异常处理、权限授予
@@ -127,7 +126,6 @@ def create_state(
         
         # 人工干预相关
         "status": "running",  # 可能的值: running, waiting_for_human, processing, completed, error
-        "needs_human_intervention": False,
         "intervention_request": None,
         "intervention_response": None,
         "intervention_type": None,

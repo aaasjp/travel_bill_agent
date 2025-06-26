@@ -68,12 +68,17 @@ def create_workflow():
     def route_after_planning(state: State) -> Union[Literal["conversation"], Literal["decision"]]:
         """规划后的路由逻辑
         
-        根据status属性决定下一步：conversation_ready进入对话节点，decision_ready进入决策节点
+        根据status属性决定下一步：
+        - conversation_ready: 进入对话节点
+        - decision_ready: 进入决策节点
         """
         status = state.get("status", "")
         if status == "conversation_ready":
             return "conversation"
         elif status == "decision_ready":
+            return "decision"
+        else:
+            # 默认进入决策节点
             return "decision"
     
     def route_after_conversation(state: State) -> Literal["END"]:
@@ -83,56 +88,63 @@ def create_workflow():
         """
         return "END"
     
-    def route_after_decision(state: State) -> Union[Literal["tool_execution"], Literal["reflection_node"]]:
-        """执行后的路由逻辑
+    def route_after_decision(state: State) -> Union[Literal["tool_execution"], Literal["human_intervention"]]:
+        """决策后的路由逻辑
         
-        如果有待执行的工具，则执行工具；否则进行反思
+        根据status和pending_tools决定下一步：
+        - status为ready_for_execution且有pending_tools: 执行工具
+        - status为waiting_for_human: 人工干预
         """
+        status = state.get("status", "")
+        
+        # 检查是否需要人工干预
+        if status == "waiting_for_human":
+            return "human_intervention"
         
         # 检查是否有待执行的工具
-        pending_tools = state.get("pending_tools", [])
-        if pending_tools:
+        if status == "ready_for_execution":
             return "tool_execution"
         
-        return "reflection_node"
+        # 默认进行反思
+        return "human_intervention"
     
     def route_after_tool(state: State) -> Literal["reflection_node"]:
         """工具执行后的路由逻辑
 
-        直接转向反思节点
+        工具执行完成后直接进行反思
         """
         return "reflection_node"
     
-    def route_after_reflection(state: State) -> Union[Literal["planning"], Literal["decision"], Literal["human_intervention"], Literal["END"]]:
+    def route_after_reflection(state: State) -> Union[Literal["planning"], Literal["human_intervention"], Literal["END"]]:
         """反思后的路由逻辑
         
-        根据反思结果决定是重新规划、继续执行、人工干预或结束
+        根据反思节点设置的status值决定下一步：
+        - status为replan: 重新规划
+        - status为waiting_for_human: 人工干预
+        - status为end: 结束流程
+        - 其他情况: 继续决策
         """
-        reflection_result = state.get("reflection_result", {})
-        action = reflection_result.get("action", "end")
-        detected_repetition = reflection_result.get("detected_repetition", False)
+        status = state.get("status", "end")
         
-        # 检查是否已经处于人工干预状态
-        already_in_intervention = state.get("status") == "waiting_for_human" or state.get("needs_human_intervention", False)
-        
-        # 如果检测到重复调用或其他可能需要人工干预的情况，且尚未进入人工干预状态，转向人工干预节点
-        if (detected_repetition or len(state.get("errors", [])) > 0) and not already_in_intervention:
-            return "human_intervention"
-        elif action == "replan":
+        if status == "replan":
             return "planning"
-        elif action == "continue":
-            return "decision"
+        elif status == "waiting_for_human":
+            return "human_intervention"
         else:
             return "END"
+        
     
     def route_after_human_intervention(state: State) -> Union[Literal["planning"], Literal["decision"], Literal["END"], Literal["human_intervention"]]:
         """人工干预后的路由逻辑
         
-        根据人工反馈决定下一步操作
+        根据人工反馈和status决定下一步操作：
+        - status为waiting_for_human: 继续等待
+        - 根据intervention_response的action决定下一步
         """
-        # 检查是否有人工反馈
-        if state.get("status") == "waiting_for_human":
-            # 如果没有人工反馈，则保持在人工干预节点
+        status = state.get("status", "")
+        
+        # 检查是否还在等待人工反馈
+        if status == "waiting_for_human":
             return "human_intervention"
         
         # 如果有人工反馈，根据反馈决定下一步操作
@@ -167,11 +179,19 @@ def create_workflow():
     )
     
     workflow.add_conditional_edges(
+        "conversation",
+        route_after_conversation,
+        {
+            "END": END
+        }
+    )
+    
+    workflow.add_conditional_edges(
         "decision",
         route_after_decision,
         {
             "tool_execution": "tool_execution",
-            "reflection_node": "reflection_node"
+            "human_intervention": "human_intervention"
         }
     )
     
@@ -201,14 +221,6 @@ def create_workflow():
             "planning": "planning",
             "decision": "decision",
             "human_intervention": "human_intervention",
-            "END": END
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "conversation",
-        route_after_conversation,
-        {
             "END": END
         }
     )
@@ -267,8 +279,7 @@ async def process_expense(input_data: Dict[str, Any]):
             response_data["result"]["conversation_type"] = "plan_empty"
         
         # 如果需要人工干预，添加干预请求
-        if final_state.get("needs_human_intervention", False):
-            response_data["needs_human_intervention"] = True
+        if final_state.get("status") == "waiting_for_human":
             response_data["intervention_request"] = final_state.get("intervention_request", {})
         
         # 如果有错误，添加到响应
@@ -309,13 +320,12 @@ async def get_status(task_id: str):
     status_response = {
         "task_id": task_id,
         "status": state.get("status", "unknown"),
-        "needs_human_intervention": state.get("needs_human_intervention", False),
         "created_at": state.get("created_at", ""),
         "updated_at": state.get("updated_at", "")
     }
     
     # 如果需要人工干预，添加干预请求
-    if state.get("needs_human_intervention", False):
+    if state.get("status") == "waiting_for_human":
         status_response["intervention_request"] = state.get("intervention_request", {})
     
     # 如果有最终输出，添加到响应
@@ -332,7 +342,7 @@ async def provide_human_feedback(task_id: str, feedback: Dict[str, Any]):
     
     state = tasks_store[task_id]
     
-    if not state.get("needs_human_intervention", False):
+    if state.get("status") != "waiting_for_human":
         raise HTTPException(status_code=400, detail=f"任务 {task_id} 不需要人工干预")
     
     # 验证反馈格式

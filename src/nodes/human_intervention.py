@@ -447,7 +447,7 @@ class HumanInterventionNode:
         """
         try:
             # 检查是否已经有干预请求（来自参数验证节点）
-            if state.get("needs_human_intervention", False) and state.get("intervention_request"):
+            if state.get("status") == "waiting_for_human" and state.get("intervention_request"):
                 # 已经有干预请求，直接处理
                 intervention_request = state["intervention_request"]
                 
@@ -473,9 +473,6 @@ class HumanInterventionNode:
             
             # 判断是否需要人工干预
             needs_intervention = self._should_request_intervention(state)
-            
-            # 更新状态
-            state["needs_human_intervention"] = needs_intervention
             
             if needs_intervention:
                 # 创建人工干预请求
@@ -580,11 +577,10 @@ class HumanInterventionNode:
                     }
                     
                     # 清除人工干预状态
-                    state["needs_human_intervention"] = False
+                    state["status"] = "ready_for_execution"
                     state["intervention_request"] = None
                     state["intervention_type"] = None
                     state["intervention_priority"] = None
-                    state["status"] = "ready_for_execution"
                     
                 elif action == "skip_tool":
                     # 跳过工具
@@ -599,12 +595,11 @@ class HumanInterventionNode:
                     }
                     
                     # 清除人工干预状态
-                    state["needs_human_intervention"] = False
+                    state["status"] = "ready_for_execution"
                     state["intervention_request"] = None
                     state["intervention_type"] = None
                     state["intervention_priority"] = None
-                    state["status"] = "ready_for_execution"
-                    
+                
                 elif action == "modify_plan":
                     # 修改计划
                     intervention_request["feedback"] = feedback
@@ -619,11 +614,10 @@ class HumanInterventionNode:
                     }
                     
                     # 清除人工干预状态
-                    state["needs_human_intervention"] = False
+                    state["status"] = "plan_modified"
                     state["intervention_request"] = None
                     state["intervention_type"] = None
                     state["intervention_priority"] = None
-                    state["status"] = "plan_modified"
             
             return state
             

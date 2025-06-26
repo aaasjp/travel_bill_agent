@@ -44,7 +44,6 @@ State = {
     "errors": "错误记录",
     
     # 人类介入状态
-    "needs_human_intervention": "是否需要人工介入",
     "intervention_reason": "介入原因",
     "intervention_context": "介入上下文信息",
     "intervention_history": "历史介入记录",

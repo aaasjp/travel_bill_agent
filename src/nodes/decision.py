@@ -9,6 +9,7 @@ from ..states.state import State
 from ..llm import get_llm
 from ..tool.registry import tool_registry, ToolGroup
 from ..memory.memory_store import MemoryStore
+from .human_intervention import InterventionType, InterventionPriority
 
 class DecisionNode:
     """
@@ -121,7 +122,7 @@ class DecisionNode:
             schema: 工具schema
             
         Returns:
-            人工干预请求
+            人工干预请求对象
         """
         # 获取参数描述
         properties = schema["parameters"].get("properties", {})
@@ -132,6 +133,7 @@ class DecisionNode:
             else:
                 param_descriptions[param] = param
         
+        # 创建干预请求对象
         intervention_request = {
             "task_id": state.get("task_id", "unknown"),
             "user_input": state.get("user_input", ""),
@@ -143,8 +145,9 @@ class DecisionNode:
             "missing_parameters": missing_params,
             "parameter_descriptions": param_descriptions,
             "current_parameters": tool_info.get("parameters", {}),
-            "intervention_type": "info_supplement",
-            "intervention_priority": "normal",
+            "intervention_type": InterventionType.INFO_SUPPLEMENT,
+            "intervention_priority": InterventionPriority.NORMAL,
+            "request_source": "decision_node",  # 请求来源：决策节点
             "intervention_options": [
                 {
                     "action": "provide_parameters",
@@ -473,17 +476,20 @@ class DecisionNode:
                                 state, step, tool_info, missing_params, schema
                             )
                             
-                            # 设置需要人工干预
-                            state["needs_human_intervention"] = True
-                            state["intervention_request"] = intervention_request
-                            state["intervention_type"] = "info_supplement"
-                            state["intervention_priority"] = "normal"
+                            # 初始化干预请求列表（如果不存在）
+                            if "intervention_request" not in state:
+                                state["intervention_request"] = []
+                            
+                            # 添加新的干预请求到列表
+                            state["intervention_request"].append(intervention_request)
+                            
+                            # 设置状态为等待人工干预
                             state["status"] = "waiting_for_human"
                             
                             return state
             
             # 如果没有需要人工干预的情况，设置状态为可以执行工具
-            if not state.get("needs_human_intervention", False):
+            if state.get("status") != "waiting_for_human":
                 state["status"] = "ready_for_execution"
             
             return state
@@ -500,110 +506,3 @@ class DecisionNode:
                             
             return state
     
-    async def handle_parameter_feedback(self, state: State, feedback: Dict[str, Any]) -> State:
-        """处理参数补充的人工反馈
-        
-        Args:
-            state: 当前状态
-            feedback: 人工反馈
-            
-        Returns:
-            更新后的状态
-        """
-        try:
-            action = feedback.get("action", "")
-            
-            if action == "provide_parameters":
-                # 提供参数
-                provided_params = feedback.get("parameters", {})
-                
-                # 找到对应的工具并更新参数
-                intervention_request = state.get("intervention_request", {})
-                step_id = intervention_request.get("step_id", "")
-                tool_name = intervention_request.get("tool_name", "")
-                
-                # 更新步骤工具中的参数
-                step_tools = state.get("step_tools", [])
-                for step in step_tools:
-                    if step.get("step_id") == step_id:
-                        tools = step.get("tools", [])
-                        for tool_info in tools:
-                            if tool_info.get("name") == tool_name:
-                                # 更新参数
-                                current_params = tool_info.get("parameters", {})
-                                updated_params = {**current_params, **provided_params}
-                                tool_info["parameters"] = updated_params
-                                
-                                # 重新验证参数
-                                is_valid, missing_params, schema = self._validate_tool_parameters(tool_name, updated_params)
-                                
-                                if is_valid:
-                                    # 参数现在满足要求，添加到待执行列表
-                                    state["pending_tools"].append({
-                                        "step_id": step_id,
-                                        "step_name": step.get("step_name", ""),
-                                        "step_desc": step.get("step_desc", ""),
-                                        "tool_name": tool_name,
-                                        "parameters": updated_params,
-                                        "reasoning": tool_info.get("reasoning", "")
-                                    })
-                                    
-                                    # 更新验证结果
-                                    validation_key = f"{step_id}_{tool_name}"
-                                    if validation_key in state.get("parameter_validation_results", {}):
-                                        state["parameter_validation_results"][validation_key]["parameters"] = updated_params
-                                        state["parameter_validation_results"][validation_key]["is_valid"] = True
-                                        state["parameter_validation_results"][validation_key]["missing_params"] = []
-                                    
-                                    # 清除人工干预状态
-                                    state["needs_human_intervention"] = False
-                                    state["intervention_request"] = None
-                                    state["intervention_type"] = None
-                                    state["intervention_priority"] = None
-                                    state["status"] = "ready_for_execution"
-                                    
-                                    return state
-                                else:
-                                    # 参数仍不满足要求，继续等待
-                                    state["intervention_request"]["missing_parameters"] = missing_params
-                                    state["intervention_request"]["current_parameters"] = updated_params
-                                
-                                break
-                        break
-                
-            elif action == "skip_tool":
-                # 跳过工具
-                intervention_request = state.get("intervention_request", {})
-                step_id = intervention_request.get("step_id", "")
-                tool_name = intervention_request.get("tool_name", "")
-                
-                # 标记工具为跳过
-                validation_key = f"{step_id}_{tool_name}"
-                if validation_key in state.get("parameter_validation_results", {}):
-                    state["parameter_validation_results"][validation_key]["skipped"] = True
-                
-                # 清除人工干预状态
-                state["needs_human_intervention"] = False
-                state["intervention_request"] = None
-                state["intervention_type"] = None
-                state["intervention_priority"] = None
-                state["status"] = "ready_for_execution"
-                
-                return state
-            
-            return state
-            
-        except Exception as e:
-            # 记录错误
-            error_message = str(e)
-            if "errors" not in state:
-                state["errors"] = []
-                
-            state["errors"].append({
-                "node": "decision",
-                "action": "handle_parameter_feedback",
-                "error": error_message,
-                "timestamp": str(state.get("updated_at", time.time()))
-            })
-            
-            return state 

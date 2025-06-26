@@ -57,9 +57,9 @@ class ReflectionNode:
 {{
     "success_aspects": ["方面1", "方面2"],  // 成功完成的方面
     "missing_aspects": ["方面3"],  // 未完成或需改进的方面
-    "action": "replan|continue|end",  // 下一步行动：重新规划、继续执行或结束
-    "rationale": "决策理由说明",
-    "final_output": "如果任务已完成，提供最终输出内容"
+    "action": "replan|waiting_for_human|end",  // 下一步行动：重新规划、人工干预或结束
+    "rationale": "反思理由说明",
+    "summary_output": "对当前反思结果的总结性输出"
 }}
 ```""")
         
@@ -97,47 +97,23 @@ class ReflectionNode:
             }
             
             # 执行反思分析
-            try:
-                reflection_result = await self.chain.ainvoke(inputs)
-                
-            except Exception as e:
-                # 捕获反思分析过程中的错误
-                error_message = str(e)
-                
-                # 创建默认的反思结果
-                action = "continue"
-                
-                reflection_result = {
-                    "success_aspects": ["部分任务已完成"],
-                    "missing_aspects": ["由于反思组件错误，无法详细分析缺失部分"],
-                    "action": action,
-                    "rationale": f"反思分析失败: {error_message}，建议{action}以尝试完成任务",
-                    "final_output": None
-                }
+            reflection_result = await self.chain.ainvoke(inputs)
             
             # 更新状态
+            # 添加时间戳到reflection_result
+            reflection_result["timestamp"] = str(state.get("updated_at", time.time()))
             state["reflection_result"] = reflection_result
             
-            # 如果任务已完成，设置最终输出
-            if reflection_result.get("action") == "end" and "final_output" in reflection_result:
-                state["final_output"] = reflection_result["final_output"]
-            
-            # 更新反思记录
-            if "reflection" not in state:
-                state["reflection"] = {}
-                
-            state["reflection"] = {
-                "success_aspects": reflection_result.get("success_aspects", []),
-                "missing_aspects": reflection_result.get("missing_aspects", []),
-                "action": reflection_result.get("action", "end"),
-                "timestamp": str(state.get("updated_at", time.time()))
-            }
+            # 使用status存放action用于节点流转
+            state["status"] = reflection_result.get("action", "end")
             
             return state
             
         except Exception as e:
-            # 记录错误
+            # 捕获所有异常并创建默认的反思结果
             error_message = str(e)
+            
+            # 记录错误
             if "errors" not in state:
                 state["errors"] = []
                 
@@ -146,5 +122,20 @@ class ReflectionNode:
                 "error": error_message,
                 "timestamp": str(state.get("updated_at", time.time()))
             })
+            
+            # 创建默认的反思结果
+            action = "end"
+            reflection_result = {
+                "success_aspects": ["由于反思组件错误，无法详细分析成功部分"],
+                "missing_aspects": ["由于反思组件错误，无法详细分析缺失部分"],
+                "action": action,
+                "rationale": f"反思分析失败: {error_message}，直接结束流程",
+                "summary_output": f"反思分析失败: {error_message}，直接结束流程",
+                "timestamp": str(state.get("updated_at", time.time()))
+            }
+            
+            # 更新状态
+            state["reflection_result"] = reflection_result
+            state["status"] = reflection_result.get("action", "end")
             
             return state 

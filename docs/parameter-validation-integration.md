@@ -117,7 +117,7 @@ decision_node = DecisionNode()
 state = await decision_node(state)
 
 # 检查是否需要人工干预
-if state.get("needs_human_intervention"):
+if state.get("status") == "waiting_for_human":
     # 处理人工干预
     pass
 else:
@@ -125,54 +125,3 @@ else:
     tool_execution_node = ToolExecutionNode()
     state = await tool_execution_node(state)
 ```
-
-### 2. 人工干预处理
-
-```python
-# 创建人工干预节点
-intervention_node = HumanInterventionNode()
-
-# 模拟人工反馈
-feedback = {
-    "action": "provide_parameters",
-    "parameters": {
-        "file_path": "/path/to/file.pdf"
-    }
-}
-
-# 处理反馈
-state = await intervention_node.handle_parameter_intervention_feedback(state, feedback)
-
-# 处理决策节点的反馈
-if state.get("intervention_response"):
-    state = await decision_node.handle_parameter_feedback(state, state["intervention_response"])
-```
-
-## 测试验证
-
-运行测试文件验证功能：
-
-```bash
-python test_decision_parameter_validation.py
-```
-
-测试包括：
-1. 决策节点中的参数验证功能
-2. 人工干预反馈处理
-3. 工具执行功能
-4. 完整工作流测试
-
-## 优势
-
-1. **集成度高**：参数验证直接集成在决策节点中，无需额外节点
-2. **自动化程度高**：自动检查之前的执行结果来补充参数
-3. **人工干预灵活**：支持多种干预选项（提供参数、跳过工具、修改计划）
-4. **执行可控**：逐个执行工具，支持错误处理和状态跟踪
-5. **循环处理**：支持参数补充后重新验证和执行
-
-## 注意事项
-
-1. 工具参数必须正确定义`required`字段
-2. 人工干预请求包含详细的参数描述和选项
-3. 执行日志记录详细的操作历史
-4. 错误处理确保系统稳定性 
