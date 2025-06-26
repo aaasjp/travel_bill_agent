@@ -31,6 +31,11 @@ class ToolExecutionNode:
             更新后的状态
         """
         try:
+            # 设置created_at时间戳（如果不存在）
+            if "created_at" not in state:
+                from datetime import datetime
+                state["created_at"] = datetime.now()
+            
             # 检查是否有待执行的工具
             pending_tools = state.get("pending_tools", [])
             if not pending_tools:
@@ -67,6 +72,11 @@ class ToolExecutionNode:
                     # 记录失败结果并停止执行
                     self._record_error_result(state, execution_result)
                     state["status"] = "tool_execution_failed"
+                    
+                    # 更新时间戳
+                    from datetime import datetime
+                    state["updated_at"] = datetime.now()
+                    
                     return state
             
             # 从pending_tools中移除成功执行的工具
@@ -76,12 +86,21 @@ class ToolExecutionNode:
             state["status"] = "tools_completed"
             self._record_completion_log(state)
 
+            # 更新时间戳
+            from datetime import datetime
+            state["updated_at"] = datetime.now()
+
             return state
             
         except Exception as e:
             # 记录未捕获的异常
             self._record_system_error(state, str(e))
             state["status"] = "tool_execution_failed"
+            
+            # 更新时间戳
+            from datetime import datetime
+            state["updated_at"] = datetime.now()
+            
             return state
     
     def _initialize_state(self, state: State) -> None:
@@ -241,7 +260,7 @@ class ToolExecutionNode:
             "tool": tool_name,
             "error": execution_result["error"],
             "error_type": execution_result["error_type"],
-            "timestamp": str(state.get("updated_at", time.time())),
+            "timestamp": str(time.time()),
             "can_retry": execution_result["can_retry"],
             "retry_count": retry_count
         })
@@ -308,7 +327,7 @@ class ToolExecutionNode:
             "node": "tool_execution",
             "error": error_message,
             "error_type": "system_error",
-            "timestamp": str(state.get("updated_at", time.time()))
+            "timestamp": str(time.time())
         })
     
     def _add_execution_log(self, state: State, node: str, action: str, details: Dict) -> None:

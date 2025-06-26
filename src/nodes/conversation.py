@@ -3,6 +3,7 @@ from langchain_core.language_models import BaseChatModel
 from ..states.state import State
 from ..llm import get_llm
 import json
+from datetime import datetime
 
 
 class ConversationNode:
@@ -79,6 +80,10 @@ class ConversationNode:
         try:
             print("--------------------------------------------------------------------------------conversation node start----------------------------------------------------------")
             
+            # 设置created_at时间戳（如果不存在）
+            if "created_at" not in state:
+                state["created_at"] = datetime.now()
+            
             # 获取对话消息
             messages = self._get_conversation_messages(state)
             
@@ -94,6 +99,9 @@ class ConversationNode:
             state["status"] = "conversation_completed"
             state["final_output"] = response_text
             
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
+            
             return state
             
         except Exception as e:
@@ -105,5 +113,8 @@ class ConversationNode:
             state["conversation_response"] = "抱歉，我遇到了一些技术问题。请稍后再试或联系技术支持。"
             state["status"] = "conversation_error"
             state["final_output"] = state["conversation_response"]
+            
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
             
             return state 

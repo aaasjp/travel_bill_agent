@@ -79,6 +79,11 @@ class ReflectionNode:
             更新后的状态
         """
         try:
+            # 设置created_at时间戳（如果不存在）
+            if "created_at" not in state:
+                from datetime import datetime
+                state["created_at"] = datetime.now()
+            
             # 准备反思输入
             current_results = state.get("current_results")
             if current_results is None:
@@ -101,11 +106,15 @@ class ReflectionNode:
             
             # 更新状态
             # 添加时间戳到reflection_result
-            reflection_result["timestamp"] = str(state.get("updated_at", time.time()))
+            reflection_result["timestamp"] = str(time.time())
             state["reflection_result"] = reflection_result
             
             # 使用status存放action用于节点流转
             state["status"] = reflection_result.get("action", "end")
+            
+            # 更新时间戳
+            from datetime import datetime
+            state["updated_at"] = datetime.now()
             
             return state
             
@@ -120,7 +129,7 @@ class ReflectionNode:
             state["errors"].append({
                 "node": "reflection",
                 "error": error_message,
-                "timestamp": str(state.get("updated_at", time.time()))
+                "timestamp": str(time.time())
             })
             
             # 创建默认的反思结果
@@ -131,11 +140,15 @@ class ReflectionNode:
                 "action": action,
                 "rationale": f"反思分析失败: {error_message}，直接结束流程",
                 "summary_output": f"反思分析失败: {error_message}，直接结束流程",
-                "timestamp": str(state.get("updated_at", time.time()))
+                "timestamp": str(time.time())
             }
             
             # 更新状态
             state["reflection_result"] = reflection_result
             state["status"] = reflection_result.get("action", "end")
+            
+            # 更新时间戳
+            from datetime import datetime
+            state["updated_at"] = datetime.now()
             
             return state 

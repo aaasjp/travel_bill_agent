@@ -5,6 +5,7 @@ import re
 import uuid
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
+from datetime import datetime
 
 from ..states.state import State
 from ..llm import get_llm
@@ -306,6 +307,9 @@ class PlanningNode:
             else:
                 state["status"] = "decision_ready"  # 计划不为空，准备进入决策节点
             
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
+            
             return state
             
         except Exception as e:
@@ -315,6 +319,10 @@ class PlanningNode:
             # 出错时设置空计划
             state["plan"] = []
             state["status"] = "conversation_ready"  # 出错时也设置为准备进入对话节点
+            
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
+            
             return state
 
     def _convert_intent_to_query(self, intent: str) -> str:

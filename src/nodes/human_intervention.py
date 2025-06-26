@@ -436,8 +436,64 @@ class HumanInterventionNode:
         if len(self.decision_history) > 100:
             self.decision_history = self.decision_history[-100:]
     
+    async def _apply_intervention_decision(self, state: State, decision: Dict[str, Any]) -> State:
+        """应用自动决策
+        
+        Args:
+            state: 当前状态
+            decision: 自动决策
+            
+        Returns:
+            更新后的状态
+        """
+        try:
+            action = decision.get("action", "")
+            
+            if action == "continue":
+                # 继续执行当前计划
+                state["status"] = "ready_for_execution"
+            elif action == "replan":
+                # 重新制定计划
+                state["status"] = "planning_ready"
+            elif action == "end":
+                # 结束任务
+                state["status"] = "completed"
+            elif action == "modify":
+                # 修改状态或参数
+                modifications = decision.get("modifications", {})
+                for key, value in modifications.items():
+                    state[key] = value
+                state["status"] = "ready_for_execution"
+            elif action == "skip":
+                # 跳过当前步骤
+                state["status"] = "ready_for_execution"
+            else:
+                # 默认继续执行
+                state["status"] = "ready_for_execution"
+            
+            # 设置自动决策响应
+            state["intervention_response"] = {
+                "action": action,
+                "auto_decision": True,
+                "timestamp": time.time()
+            }
+            
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
+            
+            return state
+            
+        except Exception as e:
+            # 出错时设置默认状态
+            state["status"] = "ready_for_execution"
+            
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
+            
+            return state
+    
     async def __call__(self, state: State) -> State:
-        """执行人工干预判断
+        """执行人工干预处理
         
         Args:
             state: 当前状态
@@ -446,72 +502,57 @@ class HumanInterventionNode:
             更新后的状态
         """
         try:
-            # 检查是否已经有干预请求（来自参数验证节点）
-            if state.get("status") == "waiting_for_human" and state.get("intervention_request"):
-                # 已经有干预请求，直接处理
-                intervention_request = state["intervention_request"]
+            # 设置created_at时间戳（如果不存在）
+            if "created_at" not in state:
+                state["created_at"] = datetime.now()
+            
+            # 检查是否需要人工干预
+            if not self._should_request_intervention(state):
+                # 不需要人工干预，直接返回
+                return state
+            
+            # 创建人工干预请求
+            intervention_request = self._create_intervention_request(state)
+            
+            # 检查是否有类似的决策历史
+            similar_decision = self._analyze_similar_decisions(intervention_request)
+            if similar_decision:
+                # 如果有类似的决策，直接应用
+                intervention_request["auto_decision"] = similar_decision
+                intervention_request["status"] = "auto_resolved"
                 
-                # 保存请求到节点
-                task_id = state.get("task_id", "unknown")
-                self.pending_tasks[task_id] = intervention_request
+                # 应用自动决策
+                state = await self._apply_intervention_decision(state, similar_decision)
                 
-                # 尝试从历史决策中学习推荐动作
-                recommended_action = self._analyze_similar_decisions(intervention_request)
-                if recommended_action:
-                    intervention_request["recommended_action"] = recommended_action
-                
-                # 发送通知
-                self._send_notifications(intervention_request)
-                
-                # 设置任务状态为等待人工干预
-                state["status"] = "waiting_for_human"
-                
-                # 设置干预响应为空
-                state["intervention_response"] = None
+                # 更新时间戳
+                state["updated_at"] = datetime.now()
                 
                 return state
             
-            # 判断是否需要人工干预
-            needs_intervention = self._should_request_intervention(state)
+            # 发送通知
+            self._send_notifications(intervention_request)
             
-            if needs_intervention:
-                # 创建人工干预请求
-                intervention_request = self._create_intervention_request(state)
-                
-                # 保存请求到状态
-                state["intervention_request"] = intervention_request
-                
-                # 保存请求到节点
-                task_id = state.get("task_id", "unknown")
-                self.pending_tasks[task_id] = intervention_request
-                
-                # 尝试从历史决策中学习推荐动作
-                recommended_action = self._analyze_similar_decisions(intervention_request)
-                if recommended_action:
-                    intervention_request["recommended_action"] = recommended_action
-                
-                # 发送通知
-                self._send_notifications(intervention_request)
-                
-                # 设置任务状态为等待人工干预
-                state["status"] = "waiting_for_human"
-                
-                # 设置干预响应为空
-                state["intervention_response"] = None
+            # 将干预请求存储到状态中
+            state["intervention_request"] = intervention_request
+            
+            # 设置状态为等待人工干预
+            state["status"] = "waiting_for_human"
+            
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
             
             return state
             
         except Exception as e:
-            # 记录错误
-            error_message = str(e)
-            if "errors" not in state:
-                state["errors"] = []
-                
-            state["errors"].append({
-                "node": "human_intervention",
-                "error": error_message,
-                "timestamp": str(state.get("updated_at", time.time()))
-            })
+            import traceback
+            traceback.print_exc()
+            print(f"人工干预节点执行失败: {str(e)}")
+            
+            # 出错时设置默认状态
+            state["status"] = "intervention_error"
+            
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
             
             return state
     
@@ -538,6 +579,10 @@ class HumanInterventionNode:
         
         # 学习用户决策
         self._learn_from_decision(request, feedback)
+        
+        # 更新时间戳
+        if "updated_at" in request:
+            request["updated_at"] = datetime.now()
         
         return request
     
@@ -619,6 +664,9 @@ class HumanInterventionNode:
                     state["intervention_type"] = None
                     state["intervention_priority"] = None
             
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
+            
             return state
             
         except Exception as e:
@@ -631,7 +679,10 @@ class HumanInterventionNode:
                 "node": "human_intervention",
                 "action": "handle_parameter_intervention_feedback",
                 "error": error_message,
-                "timestamp": str(state.get("updated_at", time.time()))
+                "timestamp": str(time.time())
             })
+            
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
             
             return state 

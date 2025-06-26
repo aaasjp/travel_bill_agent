@@ -4,12 +4,14 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 import json
 import time
+import uuid
+from datetime import datetime
 
 from ..states.state import State
 from ..llm import get_llm
 from ..tool.registry import tool_registry, ToolGroup
 from ..memory.memory_store import MemoryStore
-from .human_intervention import InterventionType, InterventionPriority
+from .human_intervention import InterventionType, InterventionPriority, NotificationChannel
 
 class DecisionNode:
     """
@@ -135,16 +137,7 @@ class DecisionNode:
         
         # 创建干预请求对象
         intervention_request = {
-            "task_id": state.get("task_id", "unknown"),
-            "user_input": state.get("user_input", ""),
-            "step_id": step_info.get("step_id", ""),
-            "step_name": step_info.get("step_name", ""),
-            "step_desc": step_info.get("step_desc", ""),
-            "tool_name": tool_info.get("name", ""),
-            "tool_description": schema.get("description", ""),
-            "missing_parameters": missing_params,
-            "parameter_descriptions": param_descriptions,
-            "current_parameters": tool_info.get("parameters", {}),
+            "intervention_id": str(uuid.uuid4()),
             "intervention_type": InterventionType.INFO_SUPPLEMENT,
             "intervention_priority": InterventionPriority.NORMAL,
             "request_source": "decision_node",  # 请求来源：决策节点
@@ -163,10 +156,22 @@ class DecisionNode:
                     "description": "修改执行计划"
                 }
             ],
-            "notification_channels": ["system"],
+            "notification_channels": [NotificationChannel.SYSTEM],
             "timeout": 3600,  # 1小时
             "timestamp": time.time(),
-            "status": "pending"
+            "status": "pending",
+            "meta_data": {
+                "task_id": state.get("task_id", "unknown"),
+                "user_input": state.get("user_input", ""),
+                "step_id": step_info.get("step_id", ""),
+                "step_name": step_info.get("step_name", ""),
+                "step_desc": step_info.get("step_desc", ""),
+                "tool_name": tool_info.get("name", ""),
+                "tool_description": schema.get("description", ""),
+                "missing_parameters": missing_params,
+                "parameter_descriptions": param_descriptions,
+                "current_parameters": tool_info.get("parameters", {})
+            }
         }
         
         return intervention_request
@@ -344,6 +349,10 @@ class DecisionNode:
             更新后的状态
         """
         try:
+            # 设置created_at时间戳（如果不存在）
+            if "created_at" not in state:
+                state["created_at"] = datetime.now()
+            
             plan = state.get("plan", [])
             
             # 检查是否有计划可执行
@@ -486,11 +495,17 @@ class DecisionNode:
                             # 设置状态为等待人工干预
                             state["status"] = "waiting_for_human"
                             
+                            # 更新时间戳
+                            state["updated_at"] = datetime.now()
+                            
                             return state
             
             # 如果没有需要人工干预的情况，设置状态为可以执行工具
             if state.get("status") != "waiting_for_human":
                 state["status"] = "ready_for_execution"
+            
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
             
             return state
             
@@ -503,6 +518,9 @@ class DecisionNode:
             # 如果决策失败，并且没有step_tools，则设置为空数组
             if not state.get("step_tools", []):
                 state["step_tools"] = []
+            
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
                             
             return state
     

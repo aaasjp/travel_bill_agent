@@ -128,6 +128,10 @@ class AnalysisNode:
             if not user_input:
                 return state.copy()
 
+            # 设置created_at时间戳（如果不存在）
+            if "created_at" not in state:
+                state["created_at"] = datetime.now()
+
             # 将用户输入添加到messages中
             self._add_user_message(state, user_input)
             self._add_assistant_message(state)
