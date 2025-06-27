@@ -138,24 +138,9 @@ class DecisionNode:
         # 创建干预请求对象
         intervention_request = {
             "intervention_id": str(uuid.uuid4()),
-            "intervention_type": InterventionType.INFO_SUPPLEMENT,
+            "intervention_type": InterventionType.PARAMETER_PROVIDER,
             "intervention_priority": InterventionPriority.NORMAL,
             "request_source": "decision_node",  # 请求来源：决策节点
-            "intervention_options": [
-                {
-                    "action": "provide_parameters",
-                    "description": "提供缺失的参数",
-                    "parameters": missing_params
-                },
-                {
-                    "action": "skip_tool",
-                    "description": "跳过当前工具"
-                },
-                {
-                    "action": "modify_plan",
-                    "description": "修改执行计划"
-                }
-            ],
             "notification_channels": [NotificationChannel.SYSTEM],
             "timeout": 3600,  # 1小时
             "timestamp": time.time(),
@@ -513,6 +498,17 @@ class DecisionNode:
             import traceback
             traceback.print_exc()
             print(f"决策节点执行失败: {str(e)}")
+            
+            # 记录错误到状态中
+            if "errors" not in state:
+                state["errors"] = []
+            
+            state["errors"].append({
+                "node": "decision",
+                "error": str(e),
+                "error_type": "decision_error",
+                "timestamp": str(time.time())
+            })
             
             # 统一的异常处理：设置默认的决策结果
             # 如果决策失败，并且没有step_tools，则设置为空数组

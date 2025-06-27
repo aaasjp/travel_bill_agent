@@ -10,6 +10,10 @@ from enum import Enum
 from datetime import datetime
 
 from ..states.state import State
+from ..llm import get_llm
+from langgraph.types import interrupt
+
+from ..memory.memory_store import MemoryStore, MemoryType
 
 # 介入优先级枚举
 class InterventionPriority(str, Enum):
@@ -25,13 +29,21 @@ class InterventionType(str, Enum):
     DECISION_CONFIRMATION = "decision_confirmation"  # 决策确认型
     EXCEPTION_HANDLING = "exception_handling"  # 异常处理型
     PERMISSION_GRANT = "permission_grant"  # 权限授予型
+    PARAMETER_PROVIDER = "parameter_provider"  # 参数提供型
+
+# 通知渠道枚举
+class NotificationChannel(str, Enum):
+    """通知渠道类型"""
+    EMAIL = "email"  # 邮件通知
+    SMS = "sms"  # 短信通知
+    WECHAT = "wechat"  # 微信通知
+    SYSTEM = "system"  # 系统内部通知
 
 class HumanInterventionNode:
     """
     人工干预节点，负责判断是否需要人工干预，并处理人工反馈。
     
     该节点会根据当前状态判断是否需要人工干预，如果需要，则等待人工反馈。
-    人工反馈可以是继续执行、重新规划、修改状态或结束任务等。
     """
     
     def __init__(self):
@@ -48,641 +60,199 @@ class HumanInterventionNode:
             "normal": 86400  # 24小时
         }
         
-        # 存储待处理的任务
-        self.pending_tasks = {}
+        # 获取LLM实例
+        self.llm = get_llm()
+
         
-        # 存储决策历史
-        self.decision_history = []
+        # 创建memory store实例
+        self.memory_store = MemoryStore()
     
-    def _determine_intervention_type(self, state: State) -> InterventionType:
-        """确定介入类型
+    async def _generate_intervention_instruction(self, state: State, intervention_request: Dict[str, Any]) -> str:
+        """
+        使用大模型生成用户操作指导
         
         Args:
             state: 当前状态
+            intervention_request: 干预请求数据
             
         Returns:
-            介入类型
-        """
-        # 检查是否有错误
-        if len(state.get("errors", [])) > 0:
-            return InterventionType.EXCEPTION_HANDLING
-        
-        # 检查是否需要额外信息
-        reflection_result = state.get("reflection_result", {})
-        if reflection_result.get("missing_aspects", []):
-            return InterventionType.INFO_SUPPLEMENT
-        
-        # 检查是否需要重要决策确认
-        if reflection_result.get("detected_repetition", False):
-            return InterventionType.DECISION_CONFIRMATION
-        
-        # 检查是否需要权限
-        execution_log = state.get("execution_log", [])
-        for entry in execution_log[-10:]:
-            if "权限不足" in str(entry.get("details", {})) or "需要授权" in str(entry.get("details", {})):
-                return InterventionType.PERMISSION_GRANT
-        
-        # 默认为决策确认
-        return InterventionType.DECISION_CONFIRMATION
-    
-    def _determine_intervention_priority(self, state: State, intervention_type: InterventionType) -> InterventionPriority:
-        """确定介入优先级
-        
-        Args:
-            state: 当前状态
-            intervention_type: 介入类型
-            
-        Returns:
-            介入优先级
-        """
-        # 检查是否涉及资金安全或严重错误
-        for error in state.get("errors", []):
-            error_msg = str(error.get("error", ""))
-            if any(kw in error_msg for kw in ["资金", "安全", "异常", "严重", "失败"]):
-                return InterventionPriority.URGENT
-        
-        # 根据介入类型确定基础优先级
-        type_priority_map = {
-            InterventionType.EXCEPTION_HANDLING: InterventionPriority.IMPORTANT,
-            InterventionType.PERMISSION_GRANT: InterventionPriority.IMPORTANT,
-            InterventionType.DECISION_CONFIRMATION: InterventionPriority.NORMAL,
-            InterventionType.INFO_SUPPLEMENT: InterventionPriority.NORMAL
-        }
-        
-        base_priority = type_priority_map.get(intervention_type, InterventionPriority.NORMAL)
-        
-        # 上升优先级的条件
-        if base_priority == InterventionPriority.NORMAL:
-            # 检查任务是否长时间运行
-            created_at = state.get("created_at", datetime.now())
-            if isinstance(created_at, str):
-                try:
-                    created_at = datetime.fromisoformat(created_at)
-                except ValueError:
-                    created_at = datetime.now()
-            
-            time_running = (datetime.now() - created_at).total_seconds()
-            if time_running > 1800:  # 30分钟
-                return InterventionPriority.IMPORTANT
-            
-            # 检查是否反复需要介入
-            intervention_count = 0
-            for entry in state.get("execution_log", []):
-                if entry.get("node") == "human_intervention" and entry.get("action") == "需要人工干预":
-                    intervention_count += 1
-            
-            if intervention_count >= 2:  # 第三次需要介入
-                return InterventionPriority.IMPORTANT
-        
-        return base_priority
-    
-    def _should_request_intervention(self, state: State) -> bool:
-        """判断是否需要人工干预
-        
-        Args:
-            state: 当前状态
-            
-        Returns:
-            是否需要人工干预
-        """
-        # 从反思结果中检查是否检测到重复
-        reflection_result = state.get("reflection_result", {})
-        detected_repetition = reflection_result.get("detected_repetition", False)
-        
-        # 检查是否有错误
-        has_errors = len(state.get("errors", [])) > 0
-        
-        # 检查是否执行了过多步骤
-        excessive_steps = False
-        execution_log = state.get("execution_log", [])
-        if len(execution_log) > 30:  # 如果执行日志超过30条，认为可能陷入循环
-            excessive_steps = True
-        
-        # 检查工具调用历史
-        tool_calls_count = 0
-        for entry in execution_log:
-            if entry.get("node") == "tool_execution" and entry.get("action", "").startswith("调用工具:"):
-                tool_calls_count += 1
-        excessive_tool_calls = tool_calls_count > 10  # 如果工具调用超过10次，考虑人工干预
-        
-        # 检查是否有限额超出
-        has_limit_exceeded = False
-        for entry in execution_log:
-            if "超出限额" in str(entry.get("details", {})) or "超出标准" in str(entry.get("details", {})):
-                has_limit_exceeded = True
-                break
-        
-        # 检查是否存在合规风险
-        has_compliance_risk = False
-        for entry in execution_log:
-            if "合规" in str(entry.get("details", {})) and ("风险" in str(entry.get("details", {})) or "违规" in str(entry.get("details", {}))):
-                has_compliance_risk = True
-                break
-        
-        # 综合判断是否需要人工干预
-        return (detected_repetition or 
-                has_errors or 
-                excessive_steps or 
-                excessive_tool_calls or 
-                has_limit_exceeded or 
-                has_compliance_risk)
-    
-    def _create_intervention_options(self, state: State, intervention_type: InterventionType) -> List[Dict[str, Any]]:
-        """根据介入类型创建干预选项
-        
-        Args:
-            state: 当前状态
-            intervention_type: 介入类型
-            
-        Returns:
-            干预选项列表
-        """
-        # 基本选项
-        basic_options = [
-            {
-                "action": "continue",
-                "description": "继续执行当前计划"
-            },
-            {
-                "action": "replan",
-                "description": "重新制定执行计划"
-            },
-            {
-                "action": "end",
-                "description": "结束任务，返回当前结果"
-            }
-        ]
-        
-        # 根据介入类型添加特定选项
-        if intervention_type == InterventionType.INFO_SUPPLEMENT:
-            basic_options.append({
-                "action": "modify",
-                "description": "提供额外信息后继续",
-                "parameters": ["additional_info"]
-            })
-        
-        elif intervention_type == InterventionType.PERMISSION_GRANT:
-            basic_options.append({
-                "action": "grant",
-                "description": "授予执行权限",
-                "parameters": ["permission_scope", "duration"]
-            })
-        
-        elif intervention_type == InterventionType.EXCEPTION_HANDLING:
-            basic_options.append({
-                "action": "modify",
-                "description": "修改状态或参数后继续",
-                "parameters": ["modifications"]
-            })
-            basic_options.append({
-                "action": "skip",
-                "description": "跳过当前步骤",
-            })
-        
-        elif intervention_type == InterventionType.DECISION_CONFIRMATION:
-            basic_options.append({
-                "action": "confirm",
-                "description": "确认执行操作",
-                "parameters": ["confirmation_note"]
-            })
-        
-        return basic_options
-    
-    def _create_intervention_request(self, state: State) -> Dict[str, Any]:
-        """创建人工干预请求
-        
-        Args:
-            state: 当前状态
-            
-        Returns:
-            人工干预请求
-        """
-        # 获取当前执行状态的摘要
-        reflection_result = state.get("reflection_result", {})
-        
-        # 获取最近的执行日志
-        recent_logs = state.get("execution_log", [])[-10:] if state.get("execution_log") else []
-        
-        # 获取最近的工具调用
-        recent_tool_calls = []
-        for entry in recent_logs:
-            if entry.get("node") == "tool_execution" and entry.get("action", "").startswith("调用工具:"):
-                tool_name = entry.get("details", {}).get("tool")
-                parameters = entry.get("details", {}).get("parameters", {})
-                if tool_name and parameters:
-                    recent_tool_calls.append({
-                        "tool": tool_name,
-                        "parameters": parameters
-                    })
-        
-        # 确定介入类型
-        intervention_type = self._determine_intervention_type(state)
-        
-        # 确定介入优先级
-        intervention_priority = self._determine_intervention_priority(state, intervention_type)
-        
-        # 获取干预选项
-        intervention_options = self._create_intervention_options(state, intervention_type)
-        
-        # 创建干预请求
-        intervention_request = {
-            "task_id": state.get("task_id", "unknown"),
-            "user_input": state.get("user_input", ""),
-            "detected_repetition": reflection_result.get("detected_repetition", False),
-            "task_completion_rate": reflection_result.get("task_completion_rate", 0),
-            "success_aspects": reflection_result.get("success_aspects", []),
-            "missing_aspects": reflection_result.get("missing_aspects", []),
-            "rationale": reflection_result.get("rationale", ""),
-            "errors": state.get("errors", []),
-            "recent_tool_calls": recent_tool_calls,
-            "intervention_type": intervention_type,
-            "intervention_priority": intervention_priority,
-            "intervention_options": intervention_options,
-            "notification_channels": self.notification_channels[intervention_priority],
-            "timeout": self.timeout_config[intervention_priority],
-            "timestamp": time.time(),
-            "status": "pending"
-        }
-        
-        return intervention_request
-    
-    def _analyze_similar_decisions(self, intervention_request: Dict[str, Any]) -> Optional[str]:
-        """分析类似场景的历史决策
-        
-        Args:
-            intervention_request: 当前干预请求
-            
-        Returns:
-            推荐的决策动作，如果没有类似决策则返回None
-        """
-        if not self.decision_history:
-            return None
-        
-        # 获取当前请求的关键特征
-        current_type = intervention_request.get("intervention_type")
-        current_rationale = intervention_request.get("rationale", "")
-        current_errors = [str(e.get("error", "")) for e in intervention_request.get("errors", [])]
-        current_tools = [t.get("tool") for t in intervention_request.get("recent_tool_calls", [])]
-        
-        # 找出类似的历史决策
-        similar_decisions = []
-        
-        for decision in self.decision_history:
-            # 必须是相同的介入类型
-            if decision.get("request", {}).get("intervention_type") != current_type:
-                continue
-                
-            # 检查错误相似性
-            hist_errors = [str(e.get("error", "")) for e in decision.get("request", {}).get("errors", [])]
-            error_similarity = self._calculate_similarity(current_errors, hist_errors)
-            
-            # 检查工具调用相似性
-            hist_tools = [t.get("tool") for t in decision.get("request", {}).get("recent_tool_calls", [])]
-            tool_similarity = self._calculate_similarity(current_tools, hist_tools)
-            
-            # 如果有足够的相似性，添加到相似决策列表
-            if error_similarity > 0.5 or tool_similarity > 0.7:
-                similar_decisions.append({
-                    "decision": decision.get("response", {}).get("action"),
-                    "similarity": max(error_similarity, tool_similarity)
-                })
-        
-        # 如果有相似决策，返回相似度最高的
-        if similar_decisions:
-            similar_decisions.sort(key=lambda x: x["similarity"], reverse=True)
-            return similar_decisions[0]["decision"]
-        
-        return None
-    
-    def _calculate_similarity(self, list1: List[str], list2: List[str]) -> float:
-        """计算两个列表的相似度
-        
-        Args:
-            list1: 第一个列表
-            list2: 第二个列表
-            
-        Returns:
-            相似度(0-1)
-        """
-        if not list1 or not list2:
-            return 0
-            
-        # 计算重叠项数量
-        overlap = len(set(list1) & set(list2))
-        
-        # 计算Jaccard相似度
-        return overlap / len(set(list1) | set(list2))
-    
-    def _should_send_notification(self, channel: str, priority: InterventionPriority) -> bool:
-        """判断是否应该通过指定渠道发送通知
-        
-        Args:
-            channel: 通知渠道
-            priority: 干预优先级
-            
-        Returns:
-            是否应该发送通知
-        """
-        # 紧急优先级总是发送所有渠道通知
-        if priority == InterventionPriority.URGENT:
-            return True
-            
-        # 重要优先级在工作时间发送
-        if priority == InterventionPriority.IMPORTANT:
-            # 获取当前时间
-            now = datetime.now()
-            # 判断是否在工作时间（周一至周五9点至18点）
-            is_workday = 0 <= now.weekday() <= 4  # 0=周一，4=周五
-            is_workhour = 9 <= now.hour < 18
-            
-            # 系统通知总是发送，其他渠道只在工作时间发送
-            if channel == "system":
-                return True
-            return is_workday and is_workhour
-            
-        # 一般优先级只发送系统通知
-        return channel == "system"
-    
-    def _send_notifications(self, intervention_request: Dict[str, Any]) -> None:
-        """发送干预通知
-        
-        Args:
-            intervention_request: 干预请求
-        """
-        task_id = intervention_request.get("task_id", "unknown")
-        priority = intervention_request.get("intervention_priority", InterventionPriority.NORMAL)
-        channels = intervention_request.get("notification_channels", ["system"])
-        
-        for channel in channels:
-            if self._should_send_notification(channel, priority):
-                # 这里实际应用中会调用外部通知服务
-                pass
-    
-    def _learn_from_decision(self, request: Dict[str, Any], response: Dict[str, Any]) -> None:
-        """从用户决策中学习
-        
-        Args:
-            request: 干预请求
-            response: 用户反馈
-        """
-        # 记录决策
-        self.decision_history.append({
-            "request": request,
-            "response": response,
-            "timestamp": time.time()
-        })
-        
-        # 限制历史记录长度，保留最近的100条决策
-        if len(self.decision_history) > 100:
-            self.decision_history = self.decision_history[-100:]
-    
-    async def _apply_intervention_decision(self, state: State, decision: Dict[str, Any]) -> State:
-        """应用自动决策
-        
-        Args:
-            state: 当前状态
-            decision: 自动决策
-            
-        Returns:
-            更新后的状态
+            用户操作指导文本
         """
         try:
-            action = decision.get("action", "")
+            intervention_type = intervention_request["intervention_type"]
+            intervention_priority = intervention_request.get("intervention_priority", "normal")
+            reason = intervention_request.get("reason", "")
             
-            if action == "continue":
-                # 继续执行当前计划
-                state["status"] = "ready_for_execution"
-            elif action == "replan":
-                # 重新制定计划
-                state["status"] = "planning_ready"
-            elif action == "end":
-                # 结束任务
-                state["status"] = "completed"
-            elif action == "modify":
-                # 修改状态或参数
-                modifications = decision.get("modifications", {})
-                for key, value in modifications.items():
-                    state[key] = value
-                state["status"] = "ready_for_execution"
-            elif action == "skip":
-                # 跳过当前步骤
-                state["status"] = "ready_for_execution"
-            else:
-                # 默认继续执行
-                state["status"] = "ready_for_execution"
+            # 构建干预提示词模板
+            base_prompt = f"""
+你是一个专业的差旅报销系统助手。当前系统需要人工干预，请根据干预类型和相关信息，生成清晰、友好的用户操作指导。
+
+## 干预类型说明
+- info_supplement  # 信息补充型
+- decision_confirmation  # 决策确认型
+- exception_handling  # 异常处理型
+- permission_grant  # 权限授予型
+- parameter_provider  # 参数提供型
+
+## 用户原始输入
+{state.get('user_input', '')}
+
+## 详细干预请求信息
+{json.dumps(intervention_request, ensure_ascii=False, indent=2)}
+
+## 任务要求
+请根据不同的干预类型，生成相应的用户操作指导
+
+## 输出要求
+请生成一个友好、清晰、结构化的用户操作指导，包含：
+1. 说明为什么需要人工干预
+2. 具体需要用户做什么
+3. 如果需要用户提供信息，请说明需要提供的信息的格式和要求
+4. 如果需要用户决策，请说明需要决策的信息和可选选项
+5. 如果需要用户处理异常，请说明需要处理异常的信息和处理方案
+6. 如果需要用户授予权限，请说明需要授予的权限和申请原因
+7. 如果需要用户提供参数，请说明需要提供的参数和参数的格式、描述、要求
+
+请用中文回复，语言要友好、专业、易懂。
+
+"""
             
-            # 设置自动决策响应
-            state["intervention_response"] = {
-                "action": action,
-                "auto_decision": True,
-                "timestamp": time.time()
-            }
+            # 调用大模型生成指导
+            messages = [
+                {"role": "system", "content": "你是一个专业的差旅报销系统助手，专门负责生成用户操作指导。"},
+                {"role": "user", "content": base_prompt}
+            ]
             
-            # 更新时间戳
-            state["updated_at"] = datetime.now()
+            response = self.llm.invoke(messages)
+            instruction = response.content.strip()
             
-            return state
+            return instruction
             
         except Exception as e:
-            # 出错时设置默认状态
-            state["status"] = "ready_for_execution"
+            import traceback
+            traceback.print_exc()
+            print(f"生成干预指导失败: {str(e)}")
             
-            # 更新时间戳
-            state["updated_at"] = datetime.now()
-            
-            return state
+            # 返回默认指导
+            return f"""
+## 系统需要人工干预
+
+**干预类型**: {intervention_type}
+**优先级**: {intervention_priority}
+**原因**: {reason}
+
+系统当前无法自动处理您的请求，需要您的人工干预。请根据上述信息提供相应的操作或信息。
+
+如有疑问，请联系系统管理员。
+"""
     
-    async def __call__(self, state: State) -> State:
-        """执行人工干预处理
+    async def handle_intervention_request(self, state: State) -> State:
+        """
+        处理来自state的干预请求，根据不同的干预类型分别处理，然后中断等待人工处理
         
         Args:
-            state: 当前状态
+            state: 当前状态，包含intervention_request字段
             
         Returns:
             更新后的状态
         """
         try:
-            # 设置created_at时间戳（如果不存在）
-            if "created_at" not in state:
-                state["created_at"] = datetime.now()
-            
-            # 检查是否需要人工干预
-            if not self._should_request_intervention(state):
-                # 不需要人工干预，直接返回
+            # 检查是否有干预请求
+            if "intervention_request" not in state or "intervention_type" not in state["intervention_request"] or "intervention_priority" not in state["intervention_request"]:
+                state["status"] = "intervention_error"
+                if "errors" not in state:
+                    state["errors"] = []
+                state["errors"].append({
+                    "node": "human_intervention",
+                    "error": "intervention_request_error",
+                    "error_type": "intervention_error",
+                    "timestamp": str(time.time()),
+                    "intervention_request": state["intervention_request"]
+                })
                 return state
             
-            # 创建人工干预请求
-            intervention_request = self._create_intervention_request(state)
+            intervention_request = state["intervention_request"]
             
-            # 检查是否有类似的决策历史
-            similar_decision = self._analyze_similar_decisions(intervention_request)
-            if similar_decision:
-                # 如果有类似的决策，直接应用
-                intervention_request["auto_decision"] = similar_decision
-                intervention_request["status"] = "auto_resolved"
-                
-                # 应用自动决策
-                state = await self._apply_intervention_decision(state, similar_decision)
-                
-                # 更新时间戳
-                state["updated_at"] = datetime.now()
-                
-                return state
+            intervention_type = intervention_request["intervention_type"]
+
+            # 使用大模型生成用户操作指导
+            instruction = await self._generate_intervention_instruction(state, intervention_request)
             
-            # 发送通知
-            self._send_notifications(intervention_request)
+            # 中断等待人工反馈
             
-            # 将干预请求存储到状态中
-            state["intervention_request"] = intervention_request
+            human_feedback = interrupt("intervention_instruction", instruction)
+
+            await self._handle_intervention_feedback(state, human_feedback)
             
-            # 设置状态为等待人工干预
-            state["status"] = "waiting_for_human"
-            
-            # 更新时间戳
-            state["updated_at"] = datetime.now()
             
             return state
             
         except Exception as e:
             import traceback
             traceback.print_exc()
-            print(f"人工干预节点执行失败: {str(e)}")
+            print(f"处理干预请求失败: {str(e)}")
             
-            # 出错时设置默认状态
-            state["status"] = "intervention_error"
-            
-            # 更新时间戳
-            state["updated_at"] = datetime.now()
-            
-            return state
-    
-    async def provide_feedback(self, task_id: str, feedback: Dict[str, Any]) -> Dict[str, Any]:
-        """提供人工反馈
-        
-        Args:
-            task_id: 任务ID
-            feedback: 人工反馈
-            
-        Returns:
-            更新后的请求
-        """
-        if task_id not in self.pending_tasks:
-            raise ValueError(f"任务 {task_id} 不存在或不需要人工干预")
-        
-        # 获取请求
-        request = self.pending_tasks[task_id]
-        
-        # 更新请求状态
-        request["status"] = "resolved"
-        request["feedback"] = feedback
-        request["resolved_timestamp"] = time.time()
-        
-        # 学习用户决策
-        self._learn_from_decision(request, feedback)
-        
-        # 更新时间戳
-        if "updated_at" in request:
-            request["updated_at"] = datetime.now()
-        
-        return request
-    
-    async def handle_parameter_intervention_feedback(self, state: State, feedback: Dict[str, Any]) -> State:
-        """处理参数验证的人工干预反馈
-        
-        Args:
-            state: 当前状态
-            feedback: 人工反馈
-            
-        Returns:
-            更新后的状态
-        """
-        try:
-            # 获取当前干预请求
-            intervention_request = state.get("intervention_request", {})
-            intervention_type = intervention_request.get("intervention_type", "")
-            
-            if intervention_type == "info_supplement":
-                # 处理参数补充的反馈
-                action = feedback.get("action", "")
-                
-                if action == "provide_parameters":
-                    # 提供参数
-                    provided_params = feedback.get("parameters", {})
-                    
-                    # 更新干预请求
-                    intervention_request["feedback"] = feedback
-                    intervention_request["status"] = "resolved"
-                    intervention_request["resolved_timestamp"] = time.time()
-                    
-                    # 设置干预响应
-                    state["intervention_response"] = {
-                        "action": action,
-                        "parameters": provided_params,
-                        "timestamp": time.time()
-                    }
-                    
-                    # 清除人工干预状态
-                    state["status"] = "ready_for_execution"
-                    state["intervention_request"] = None
-                    state["intervention_type"] = None
-                    state["intervention_priority"] = None
-                    
-                elif action == "skip_tool":
-                    # 跳过工具
-                    intervention_request["feedback"] = feedback
-                    intervention_request["status"] = "resolved"
-                    intervention_request["resolved_timestamp"] = time.time()
-                    
-                    # 设置干预响应
-                    state["intervention_response"] = {
-                        "action": action,
-                        "timestamp": time.time()
-                    }
-                    
-                    # 清除人工干预状态
-                    state["status"] = "ready_for_execution"
-                    state["intervention_request"] = None
-                    state["intervention_type"] = None
-                    state["intervention_priority"] = None
-                
-                elif action == "modify_plan":
-                    # 修改计划
-                    intervention_request["feedback"] = feedback
-                    intervention_request["status"] = "resolved"
-                    intervention_request["resolved_timestamp"] = time.time()
-                    
-                    # 设置干预响应
-                    state["intervention_response"] = {
-                        "action": action,
-                        "modifications": feedback.get("modifications", {}),
-                        "timestamp": time.time()
-                    }
-                    
-                    # 清除人工干预状态
-                    state["status"] = "plan_modified"
-                    state["intervention_request"] = None
-                    state["intervention_type"] = None
-                    state["intervention_priority"] = None
-            
-            # 更新时间戳
-            state["updated_at"] = datetime.now()
-            
-            return state
-            
-        except Exception as e:
             # 记录错误
-            error_message = str(e)
             if "errors" not in state:
                 state["errors"] = []
-                
+            
             state["errors"].append({
                 "node": "human_intervention",
-                "action": "handle_parameter_intervention_feedback",
-                "error": error_message,
-                "timestamp": str(time.time())
+                "error": str(e),
+                "error_type": "intervention_error",
+                "timestamp": str(time.time()),
+                "intervention_request": state.get("intervention_request", {})
             })
+            state["status"] = "intervention_error"
             
-            # 更新时间戳
-            state["updated_at"] = datetime.now()
+            return state
+    
+    async def _handle_intervention_feedback(self, state: State, user_feedback: str):
+        """
+        处理人工反馈结果
+        """
+        state["user_feedback"] = user_feedback
+        state["user_input"] = user_feedback
+        state["status"] = "intervention_completed"
+        state["updated_at"] = datetime.now()
+
+        if "memory_records" not in state:
+                state["memory_records"] = []
+
+        # 把用户反馈的内容保存到memory中
+        try:
+            # 获取干预请求信息
+            intervention_request = state.get("intervention_request", {})
+            # 构建memory内容
+            memory_content = {
+                "user_feedback": user_feedback,
+                "intervention_request": intervention_request,
+                "user_input": state.get("user_input", ""),
+                "timestamp": datetime.now().isoformat(),
+                "status": "intervention_completed"
+            }
             
-            return state 
+            # 添加memory
+            memory_unit = self.memory_store.add_memory_by_llm(json.dumps(memory_content, ensure_ascii=False, indent=2))
+            state["memory_records"].append(memory_unit.to_dict())
+            
+            
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"记录人工干预反馈到memory失败: {str(e)}")
+            
+            # 记录错误到状态中
+            if "errors" not in state:
+                state["errors"] = []
+            state["errors"].append({
+                "node": "human_intervention",
+                "error": str(e),
+                "error_type": "intervention_error",
+                "timestamp": str(time.time()),
+                "user_feedback": user_feedback
+            })
+        
+        return state
+
+        

@@ -316,6 +316,18 @@ class PlanningNode:
             import traceback
             traceback.print_exc()
             print(f"----task planning llm error: {e}")
+            
+            # 记录错误到状态中
+            if "errors" not in state:
+                state["errors"] = []
+            
+            state["errors"].append({
+                "node": "planning",
+                "error": str(e),
+                "error_type": "planning_error",
+                "timestamp": str(time.time())
+            })
+            
             # 出错时设置空计划
             state["plan"] = []
             state["status"] = "conversation_ready"  # 出错时也设置为准备进入对话节点

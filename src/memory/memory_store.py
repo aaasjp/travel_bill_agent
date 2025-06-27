@@ -335,7 +335,7 @@ class MemoryStore:
             return response.split("</think>")[-1].strip()
         return response.strip()
 
-    def add_memory_by_llm(self, memory_desc: str) -> str:
+    def add_memory_by_llm(self, memory_desc: str) -> MemoryUnit:
         """
         使用大模型解析记忆描述并创建记忆单元
         
@@ -343,7 +343,7 @@ class MemoryStore:
             memory_desc: 记忆描述文本
             
         Returns:
-            str: 新创建的记忆ID
+            MemoryUnit: 新创建的记忆单元
         """
         # 获取LLM实例
         llm = get_llm()

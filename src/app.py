@@ -122,7 +122,6 @@ def create_workflow():
         - status为replan: 重新规划
         - status为waiting_for_human: 人工干预
         - status为end: 结束流程
-        - 其他情况: 继续决策
         """
         status = state.get("status", "end")
         

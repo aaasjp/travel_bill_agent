@@ -162,7 +162,31 @@ class AnalysisNode:
             return state
             
         except Exception as e:
-            return state.copy()
+            import traceback
+            traceback.print_exc()
+            print(f"分析节点执行失败: {str(e)}")
+            
+            # 记录错误到状态中
+            if "errors" not in state:
+                state["errors"] = []
+            
+            state["errors"].append({
+                "node": "analysis",
+                "error": str(e),
+                "error_type": "analysis_error",
+                "timestamp": str(time.time())
+            })
+            
+            # 设置默认意图
+            state["intent"] = {
+                "主要意图": "处理用户请求",
+                "细节": {"错误": "意图分析失败"}
+            }
+            
+            # 更新时间戳
+            state["updated_at"] = datetime.now()
+            
+            return state
     
     def _build_system_prompt(self, user_input: str) -> str:
         """构建系统提示

@@ -4,6 +4,7 @@ from ..states.state import State
 from ..llm import get_llm
 import json
 from datetime import datetime
+import time
 
 
 class ConversationNode:
@@ -108,6 +109,17 @@ class ConversationNode:
             import traceback
             traceback.print_exc()
             print(f"----conversation node error: {e}")
+            
+            # 记录错误到状态中
+            if "errors" not in state:
+                state["errors"] = []
+            
+            state["errors"].append({
+                "node": "conversation",
+                "error": str(e),
+                "error_type": "conversation_error",
+                "timestamp": str(time.time())
+            })
             
             # 出错时设置默认回复
             state["conversation_response"] = "抱歉，我遇到了一些技术问题。请稍后再试或联系技术支持。"
