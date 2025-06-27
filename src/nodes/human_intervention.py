@@ -229,7 +229,6 @@ class HumanInterventionNode:
                 "intervention_request": intervention_request,
                 "user_input": state.get("user_input", ""),
                 "timestamp": datetime.now().isoformat(),
-                "status": "intervention_completed"
             }
             
             # 添加memory
