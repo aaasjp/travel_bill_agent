@@ -137,30 +137,26 @@ def create_workflow():
         """人工干预后的路由逻辑
         
         根据人工反馈和status决定下一步操作：
-        - status为waiting_for_human: 继续等待
-        - 根据intervention_response的action决定下一步
+        - status为intervention_completed: 进入决策节点
+        - status为intervention_error: 结束流程
         """
         status = state.get("status", "")
         
-        # 检查是否还在等待人工反馈
-        if status == "waiting_for_human":
-            return "human_intervention"
-        
-        # 如果有人工反馈，根据反馈决定下一步操作
-        intervention_response = state.get("intervention_response", {})
-        action = intervention_response.get("action", "end")
-        
-        if action == "replan":
-            return "planning"
-        elif action == "continue" or action == "modify":
+        # 检查人工干预完成状态
+        if status == "intervention_completed":
             return "decision"
-        else:
+        
+        # 检查人工干预错误状态
+        if status == "intervention_error":
             return "END"
+        
+        # 默认进入决策节点
+        return "decision"
     
     
     
     # 设置边和条件路由
-    workflow.add_edge(
+    workflow.add_conditional_edges(
         "analysis",
         route_after_analysis,
         {
@@ -207,7 +203,6 @@ def create_workflow():
         route_after_reflection,
         {
             "planning": "planning",
-            "decision": "decision",
             "human_intervention": "human_intervention",
             "END": END
         }
@@ -217,9 +212,7 @@ def create_workflow():
         "human_intervention",
         route_after_human_intervention,
         {
-            "planning": "planning",
             "decision": "decision",
-            "human_intervention": "human_intervention",
             "END": END
         }
     )
@@ -237,30 +230,51 @@ tasks_store = {}
 
 @app.post("/process")
 async def process_expense(input_data: Dict[str, Any]):
-    """处理智能体请求"""
+    """处理报销请求"""
     try:
-        # 获取客户端ID
-        client_id = input_data.get("client_id", "default")
+        # 验证输入
+        if "input" not in input_data:
+            raise HTTPException(status_code=400, detail="缺少 'input' 字段")
         
-        # 获取用户信息
-        user_info = input_data.get("user_info", None)
+        user_input = input_data["input"]
+        client_id = input_data.get("client_id", "default_client")
         
         # 创建初始状态
         initial_state = create_state(
-            task_id=str(uuid.uuid4()),
-            user_input=input_data.get("input", ""),
-            client_id=client_id,
-            user_info=user_info
+            user_input=user_input,
+            client_id=client_id
         )
         
-        # 执行工作流
+        # 获取工作流
+        workflow = create_workflow()
+        
         try:
             final_state = await workflow.ainvoke(initial_state)
             
             # 保存任务状态
             tasks_store[final_state["task_id"]] = final_state
         except Exception as e:
-            raise
+            # 检查是否是GraphInterrupt（人工干预中断）
+            if "GraphInterrupt" in str(type(e)) or "interrupt" in str(e).lower():
+                # 这是正常的人工干预中断，不是错误
+                # 从异常中提取中断信息
+                interrupt_data = getattr(e, 'value', {})
+                
+                # 保存当前状态（包含干预请求）
+                tasks_store[initial_state["task_id"]] = initial_state
+                
+                # 返回需要人工干预的响应
+                return {
+                    "task_id": initial_state["task_id"],
+                    "status": "waiting_for_human",
+                    "message": "需要人工干预",
+                    "intervention_request": initial_state.get("intervention_request", {}),
+                    "instruction": interrupt_data.get("instruction", "需要人工干预"),
+                    "next_action": "请调用 /human_feedback/{task_id} 端点提供反馈"
+                }
+            else:
+                # 这是真正的错误，重新抛出
+                raise
         
         # 准备响应数据
         response_data = {

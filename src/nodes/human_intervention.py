@@ -146,7 +146,7 @@ class HumanInterventionNode:
 如有疑问，请联系系统管理员。
 """
     
-    async def handle_intervention_request(self, state: State) -> State:
+    async def __call__(self, state: State) -> State:
         """
         处理来自state的干预请求，根据不同的干预类型分别处理，然后中断等待人工处理
         
@@ -180,7 +180,9 @@ class HumanInterventionNode:
             
             # 中断等待人工反馈
             
-            human_feedback = interrupt("intervention_instruction", instruction)
+            human_feedback = interrupt({
+                "instruction": instruction
+            })
 
             await self._handle_intervention_feedback(state, human_feedback)
             
@@ -212,7 +214,6 @@ class HumanInterventionNode:
         处理人工反馈结果
         """
         state["user_feedback"] = user_feedback
-        state["user_input"] = user_feedback
         state["status"] = "intervention_completed"
         state["updated_at"] = datetime.now()
 
@@ -253,5 +254,6 @@ class HumanInterventionNode:
             })
         
         return state
+
 
         

@@ -58,10 +58,39 @@ class PlanningNode:
             具体的记忆信息如下：   
             {memory_records}    
 
+            【执行日志】
+            记录系统执行过程中的所有操作和状态变化：
+            {execution_log}
+
+            【已完成工具】
+            记录已经成功执行的工具调用：
+            {completed_tools}
+
+            【工具执行结果】
+            记录工具调用的详细结果：
+            {tool_results}
+
+            【反思结果】
+            记录系统对执行情况的反思分析：
+            {reflection_result}
+
+            【人工干预信息】
+            记录人工干预的请求和反馈：
+            {intervention_info}
+
+            【错误信息】
+            记录执行过程中遇到的错误：
+            {errors}
         
             【用户需求】: {intent}
              
             参考上述信息，为了完成用户需求，生成详细的接下来需要执行的计划。
+            
+            重要说明：
+            1. 如果某个步骤已经完成（在已完成工具或执行日志中有记录），请不要将其包含在新的计划中
+            2. 只规划尚未完成的步骤
+            3. 根据反思结果和错误信息，调整计划以解决之前的问题
+            4. 考虑人工反馈，优化后续步骤
             
             要求：
             1. step_name 必须是简短的步骤名称，例如："提交出差申请"、"上传火车票"等
@@ -228,6 +257,14 @@ class PlanningNode:
             # 获取可用工具描述
             tools_description = self._get_available_tools_description()
             
+            # 格式化各种执行信息
+            execution_log = self._format_execution_log(state)
+            completed_tools = self._format_completed_tools(state)
+            tool_results = self._format_tool_results(state)
+            reflection_result = self._format_reflection_result(state)
+            intervention_info = self._format_intervention_info(state)
+            errors = self._format_errors(state)
+            
             # 获取规划提示模板
             prompt = self._get_planning_prompt()
             
@@ -236,7 +273,13 @@ class PlanningNode:
                 "intent": state["intent"],
                 "knowledge": knowledge_content,  # 使用向量知识库查询结果
                 "memory_records": state.get("memory_records", "无历史记录"),
-                "available_tools": tools_description
+                "available_tools": tools_description,
+                "execution_log": execution_log,
+                "completed_tools": completed_tools,
+                "tool_results": tool_results,
+                "reflection_result": reflection_result,
+                "intervention_info": intervention_info,
+                "errors": errors
             }
             
             # 执行规划
@@ -385,3 +428,180 @@ class PlanningNode:
             print(f"----intent to query conversion error: {e}")
             # 出错时返回原始意图作为查询
             return intent
+
+    def _format_execution_log(self, state: State) -> str:
+        """格式化执行日志
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            格式化的执行日志字符串
+        """
+        try:
+            execution_log = state.get("execution_log", [])
+            if not execution_log:
+                return "无执行日志"
+            
+            # 如果是字符串类型，直接返回
+            if isinstance(execution_log, str):
+                return execution_log
+            
+            # 如果是列表或字典，转换为JSON格式字符串
+            if isinstance(execution_log, (list, dict)):
+                return json.dumps(execution_log, ensure_ascii=False, indent=2)
+            
+            # 其他类型转换为字符串
+            return str(execution_log)
+            
+        except Exception as e:
+            return f"执行日志格式化出错: {str(e)}"
+
+    def _format_completed_tools(self, state: State) -> str:
+        """格式化已完成工具
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            格式化的已完成工具字符串
+        """
+        try:
+            completed_tools = state.get("completed_tools", [])
+            if not completed_tools:
+                return "无已完成工具"
+            
+            # 如果是字符串类型，直接返回
+            if isinstance(completed_tools, str):
+                return completed_tools
+            
+            # 如果是列表或字典，转换为JSON格式字符串
+            if isinstance(completed_tools, (list, dict)):
+                return json.dumps(completed_tools, ensure_ascii=False, indent=2)
+            
+            # 其他类型转换为字符串
+            return str(completed_tools)
+            
+        except Exception as e:
+            return f"已完成工具格式化出错: {str(e)}"
+
+    def _format_tool_results(self, state: State) -> str:
+        """格式化工具执行结果
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            格式化的工具执行结果字符串
+        """
+        try:
+            tool_results = state.get("tool_results", {})
+            if not tool_results:
+                return "无工具执行结果"
+            
+            # 如果是字符串类型，直接返回
+            if isinstance(tool_results, str):
+                return tool_results
+            
+            # 如果是列表或字典，转换为JSON格式字符串
+            if isinstance(tool_results, (list, dict)):
+                return json.dumps(tool_results, ensure_ascii=False, indent=2)
+            
+            # 其他类型转换为字符串
+            return str(tool_results)
+            
+        except Exception as e:
+            return f"工具执行结果格式化出错: {str(e)}"
+
+    def _format_reflection_result(self, state: State) -> str:
+        """格式化反思结果
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            格式化的反思结果字符串
+        """
+        try:
+            reflection_result = state.get("reflection_result", {})
+            if not reflection_result:
+                return "无反思结果"
+            
+            # 如果是字符串类型，直接返回
+            if isinstance(reflection_result, str):
+                return reflection_result
+            
+            # 如果是列表或字典，转换为JSON格式字符串
+            if isinstance(reflection_result, (list, dict)):
+                return json.dumps(reflection_result, ensure_ascii=False, indent=2)
+            
+            # 其他类型转换为字符串
+            return str(reflection_result)
+            
+        except Exception as e:
+            return f"反思结果格式化出错: {str(e)}"
+
+    def _format_intervention_info(self, state: State) -> str:
+        """格式化人工干预信息
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            格式化的人工干预信息字符串
+        """
+        try:
+            intervention_request = state.get("intervention_request", {})
+            intervention_response = state.get("intervention_response", {})
+            
+            # 合并干预信息
+            intervention_info = {}
+            if intervention_request:
+                intervention_info["intervention_request"] = intervention_request
+            if intervention_response:
+                intervention_info["intervention_response"] = intervention_response
+            
+            if not intervention_info:
+                return "无人工干预信息"
+            
+            # 如果是字符串类型，直接返回
+            if isinstance(intervention_info, str):
+                return intervention_info
+            
+            # 如果是列表或字典，转换为JSON格式字符串
+            if isinstance(intervention_info, (list, dict)):
+                return json.dumps(intervention_info, ensure_ascii=False, indent=2)
+            
+            # 其他类型转换为字符串
+            return str(intervention_info)
+            
+        except Exception as e:
+            return f"人工干预信息格式化出错: {str(e)}"
+
+    def _format_errors(self, state: State) -> str:
+        """格式化错误信息
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            格式化的错误信息字符串
+        """
+        try:
+            errors = state.get("errors", [])
+            if not errors:
+                return "无错误信息"
+            
+            # 如果是字符串类型，直接返回
+            if isinstance(errors, str):
+                return errors
+            
+            # 如果是列表或字典，转换为JSON格式字符串
+            if isinstance(errors, (list, dict)):
+                return json.dumps(errors, ensure_ascii=False, indent=2)
+            
+            # 其他类型转换为字符串
+            return str(errors)
+            
+        except Exception as e:
+            return f"错误信息格式化出错: {str(e)}"

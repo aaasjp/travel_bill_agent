@@ -1,10 +1,10 @@
 from typing import Dict, Any, List, Optional, Tuple
 from langchain_core.language_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
 import json
 import time
 import uuid
+import re
 from datetime import datetime
 
 from ..states.state import State
@@ -30,9 +30,6 @@ class DecisionNode:
         self.llm = llm or get_llm()
         self.tool_registry = tool_registry
         self.memory_store = MemoryStore()
-        
-        # 定义解析器
-        self.parser = JsonOutputParser()
     
     def _get_tool_schema(self, tool_name: str) -> Optional[Dict[str, Any]]:
         """获取工具的schema定义
@@ -167,71 +164,75 @@ class DecisionNode:
         Returns:
             决策提示模板
         """
-        return ChatPromptTemplate.from_template("""你是一个专业助手的决策组件。
-你的任务是为计划中的每个步骤选择合适的工具，并为工具填写所需的参数。
+        return ChatPromptTemplate.from_messages([
+            ("system", """你是一个专业的决策助手。你的任务是为计划中的每个步骤选择合适的工具，并为工具填写所需的参数。"""),
+            ("user", """
+            【用户输入】: {user_input}
+            
+            【用户信息】: {user_info}
+            
+            【用户记忆】: {user_memories}
+            
+            【对话历史】: {conversation_history}
+            
+            【意图分析】: {intent}
+            
+            【任务计划】: {plan}
+            
+            【可用工具列表】: {available_tools}
+            
+            【反思结果】: {reflection_results}
+            
+            【人工干预请求】: {intervention_request}
+            
+            【人工反馈结果】: {human_feedback}
+            
+            请仔细分析每个计划步骤，为每个步骤选择最合适的工具。每个步骤可能需要一个或多个工具来完成。
+            在填写工具参数时，请根据以下信息进行判断：
+            1. 用户输入中的具体信息
+            2. 用户基本信息（姓名、工号、部门等）
+            3. 用户的历史记忆和偏好
+            4. 对话历史中的相关信息
+            5. 意图分析结果
+            6. 反思结果中的改进建议
+            7. 人工干预请求中的缺失参数信息
+            8. 人工反馈结果中提供的参数和建议
+            
+            要求：
+            1. 每个步骤可以包含一个或多个工具调用
+            2. 工具参数必须与工具定义中的参数名称和类型匹配
+            3. 如果找不到对应的参数值，设置为"未知"
+            4. 请根据用户信息、记忆和对话历史来推断参数值
+            5. 只能使用上面列出的可用工具
+            6. 为每个工具选择提供合理的推理说明
+            7. step_id、step_name、step_desc需要严格来自plan中的step_id、step_name、step_desc
+            8. 如果有反思结果，请参考其中的改进建议来优化决策
+            9. 如果之前有人工干预请求，请优先使用人工反馈中提供的参数值
+            10. 结合所有上下文信息，做出最合适的工具选择和参数填写决策
+            
+            严格按照以下JSON格式输出，不要添加任何额外的字段或注释：
 
-## 用户输入
-{user_input}
-
-## 用户信息
-{user_info}
-
-## 用户记忆
-{user_memories}
-
-## 对话历史
-{conversation_history}
-
-## 意图分析
-{intent}
-
-## 任务计划
-{plan}
-
-## 可用工具列表
-{available_tools}
-
-## 任务说明
-请仔细分析每个计划步骤，为每个步骤选择最合适的工具。每个步骤可能需要一个或多个工具来完成。
-在填写工具参数时，请根据以下信息进行判断：
-1. 用户输入中的具体信息
-2. 用户基本信息（姓名、工号、部门等）
-3. 用户的历史记忆和偏好
-4. 对话历史中的相关信息
-5. 意图分析结果
-
-请返回JSON格式的结果：
-
-```json
-{{
-    "step_tools": [
-        {{
-            "step_id": "步骤ID",
-            "step_name": "步骤名称",
-            "step_desc": "步骤描述",
-            "tools": [
-                {{
-                    "name": "工具名称",
-                    "parameters": {{
-                        "参数1": "值1",
-                        "参数2": "值2"
-                    }},
-                    "reasoning": "选择该工具的原因"
-                }}
-            ]
-        }}
-    ]
-}}
-```
-
-注意：
-1. 每个步骤可以包含一个或多个工具调用
-2. 工具参数必须与工具定义中的参数名称和类型匹配
-3. 如果找不到对应的参数值，设置为"未知"
-4. 请根据用户信息、记忆和对话历史来推断参数值
-5. 只能使用上面列出的可用工具
-6. 为每个工具选择提供合理的推理说明
-7. step_id、step_name、step_desc需要严格来自plan中的step_id、step_name、step_desc。""")
+            {{
+                "step_tools": [
+                    {{
+                        "step_id": "步骤ID",
+                        "step_name": "步骤名称",
+                        "step_desc": "步骤描述",
+                        "tools": [
+                            {{
+                                "name": "工具名称",
+                                "parameters": {{
+                                    "参数1": "值1",
+                                    "参数2": "值2"
+                                }},
+                                "reasoning": "选择该工具的原因"
+                            }}
+                        ]
+                    }}
+                ]
+            }}
+            """)
+        ])
     
     def _get_available_tools_description(self) -> Tuple[str, List[Dict[str, Any]]]:
         """获取可用工具的描述
@@ -240,7 +241,7 @@ class DecisionNode:
             工具描述字符串和工具模式列表
         """
         # 获取所有工具模式
-        tool_schemas = self.tool_registry.get_schemas_by_group(ToolGroup.BUSINESS_TRIP_V2)
+        tool_schemas = self.tool_registry.get_schemas_by_group(ToolGroup.BUSINESS_TRIP)
         
         # 格式化工具描述
         tools_description = ""
@@ -324,6 +325,146 @@ class DecisionNode:
         except Exception as e:
             return f"用户信息格式化出错: {str(e)}"
     
+    def _format_reflection_results(self, state: State) -> str:
+        """格式化反思结果
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            格式化的反思结果字符串
+        """
+        try:
+            reflection_results = state.get("reflection_results", [])
+            if not reflection_results:
+                return "无反思结果"
+            
+            # 如果已经是字符串格式，直接返回
+            if isinstance(reflection_results, str):
+                return f"反思结果：\n{reflection_results}"
+            
+            # 如果是字典或列表，转换为JSON格式
+            if isinstance(reflection_results, (dict, list)):
+                return f"反思结果：\n{json.dumps(reflection_results, ensure_ascii=False, indent=2)}"
+            
+            # 其他情况，转换为字符串
+            return f"反思结果：\n{str(reflection_results)}"
+        except Exception as e:
+            return f"反思结果格式化出错: {str(e)}"
+    
+    def _format_intervention_request(self, state: State) -> str:
+        """格式化人工干预请求
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            格式化的干预请求字符串
+        """
+        try:
+            intervention_request = state.get("intervention_request", {})
+            if not intervention_request:
+                return "无人工干预请求"
+            
+            # 如果已经是字符串格式，直接返回
+            if isinstance(intervention_request, str):
+                return f"人工干预请求：\n{intervention_request}"
+            
+            # 如果是字典或列表，转换为JSON格式
+            if isinstance(intervention_request, (dict, list)):
+                return f"人工干预请求：\n{json.dumps(intervention_request, ensure_ascii=False, indent=2)}"
+            
+            # 其他情况，转换为字符串
+            return f"人工干预请求：\n{str(intervention_request)}"
+        except Exception as e:
+            return f"人工干预请求格式化出错: {str(e)}"
+    
+    def _format_human_feedback(self, state: State) -> str:
+        """格式化人工反馈结果
+        
+        Args:
+            state: 当前状态
+            
+        Returns:
+            格式化的反馈结果字符串
+        """
+        try:
+            human_feedback = state.get("human_feedback", {})
+            if not human_feedback:
+                return "无人工反馈结果"
+            
+            # 如果已经是字符串格式，直接返回
+            if isinstance(human_feedback, str):
+                return f"人工反馈结果：\n{human_feedback}"
+            
+            # 如果是字典或列表，转换为JSON格式
+            if isinstance(human_feedback, (dict, list)):
+                return f"人工反馈结果：\n{json.dumps(human_feedback, ensure_ascii=False, indent=2)}"
+            
+            # 其他情况，转换为字符串
+            return f"人工反馈结果：\n{str(human_feedback)}"
+        except Exception as e:
+            return f"人工反馈结果格式化出错: {str(e)}"
+    
+    def extract_json_from_response(self, text: str) -> str:
+        """从响应中提取JSON部分
+        
+        Args:
+            text: 响应文本
+            
+        Returns:
+            提取的JSON字符串
+        """
+        # 尝试找到JSON块
+        json_pattern = r'```json\s*([\s\S]*?)\s*```'
+        json_match = re.search(json_pattern, text)
+        
+        if json_match:
+            # 找到了JSON块
+            return json_match.group(1).strip()
+        
+        # 如果没有找到JSON块，尝试直接解析为JSON
+        # 移除<think>标签块
+        text = re.sub(r'<think>[\s\S]*?</think>', '', text).strip()
+        
+        # 尝试找到完整的JSON对象
+        try:
+            # 查找可能的JSON开始位置
+            start_pos = text.find('{')
+            if start_pos >= 0:
+                # 尝试逐字符解析，找到有效的JSON
+                for end_pos in range(len(text), start_pos, -1):
+                    try:
+                        json_candidate = text[start_pos:end_pos]
+                        # 尝试解析
+                        json.loads(json_candidate)
+                        # 如果成功解析，返回这个JSON字符串
+                        return json_candidate
+                    except json.JSONDecodeError:
+                        # 解析失败，继续尝试
+                        continue
+        except Exception:
+            # 发生其他异常，忽略并继续
+            pass
+            
+        # 如果上述方法都失败，使用正则表达式查找JSON对象
+        # 这个更宽松的模式可能会找到不完整的JSON
+        json_pattern = r'({[\s\S]*?})'
+        json_match = re.search(json_pattern, text)
+        
+        if json_match:
+            return json_match.group(1).strip()
+            
+        # 最后尝试查找任何花括号包围的内容
+        if '{' in text and '}' in text:
+            start = text.find('{')
+            end = text.rfind('}') + 1
+            if start < end:
+                return text[start:end]
+        
+        # 如果都失败了，返回一个有效的空JSON对象
+        return '{}'
+    
     async def __call__(self, state: State) -> State:
         """执行决策操作
         
@@ -334,6 +475,7 @@ class DecisionNode:
             更新后的状态
         """
         try:
+            print("--------------------------------决策节点开始执行--------------------------------")
             # 设置created_at时间戳（如果不存在）
             if "created_at" not in state:
                 state["created_at"] = datetime.now()
@@ -349,21 +491,45 @@ class DecisionNode:
             user_memories = self._format_user_memories(state)
             conversation_history = self._format_conversation_history(state)
             user_info = self._format_user_info(state)
+            reflection_results = self._format_reflection_results(state)
+            intervention_request = self._format_intervention_request(state)
+            human_feedback = self._format_human_feedback(state)
             
-            # 获取决策提示模板并构建决策链
-            decision_prompt = self._get_decision_prompt()
-            chain = decision_prompt | self.llm | self.parser
+            # 获取决策提示模板
+            prompt = self._get_decision_prompt()
             
-            # 执行决策
-            decision_result = await chain.ainvoke({
+            # 准备输入
+            inputs = {
                 "user_input": state.get("user_input", ""),
                 "user_info": user_info,
                 "user_memories": user_memories,
                 "conversation_history": conversation_history,
                 "intent": json.dumps(state.get("intent", {}), ensure_ascii=False, indent=2),
                 "plan": json.dumps(plan, ensure_ascii=False, indent=2),
-                "available_tools": tools_description
-            })
+                "available_tools": tools_description,
+                "reflection_results": reflection_results,
+                "intervention_request": intervention_request,
+                "human_feedback": human_feedback
+            }
+            
+            # 执行决策
+            print(f"【PROMPT】:\n{prompt.format_messages(**inputs)}")
+            response = self.llm.invoke(prompt.format_messages(**inputs))
+            response_text = response.content
+
+            print(f"【RESPONSE】:\n{response_text}")
+            
+            # 提取并解析 JSON
+            json_str = self.extract_json_from_response(response_text)
+            
+            # 解析JSON
+            try:
+                decision_result = json.loads(json_str)
+            except json.JSONDecodeError:
+                # 如果解析失败，创建默认结果
+                decision_result = {
+                    "step_tools": []
+                }
             
             # 处理决策结果
             step_tools = decision_result.get("step_tools", [])
@@ -418,15 +584,16 @@ class DecisionNode:
                     
                     if is_valid:
                         # 参数满足要求，添加到待执行列表
-                        state["pending_tools"].append({
-                            "step_id": step_id,
-                            "step_name": step_name,
-                            "step_desc": step_desc,
-                            "tool_name": tool_name,
-                            "parameters": parameters,
-                            "reasoning": reasoning
-                        })
-                        state["validated_tools"].append(validation_key)
+                        if validation_key not in state["validated_tools"]:
+                            state["validated_tools"].append(validation_key)
+                            state["pending_tools"].append({
+                                "step_id": step_id,
+                                "step_name": step_name,
+                                "step_desc": step_desc,
+                                "tool_name": tool_name,
+                                "parameters": parameters,
+                                "reasoning": reasoning
+                            })
                     else:
                         # 参数不满足要求，检查之前的执行结果
                         found_params = self._check_previous_results_for_parameters(state, missing_params)
@@ -446,15 +613,16 @@ class DecisionNode:
                                 state["parameter_validation_results"][validation_key]["missing_params"] = []
                                 state["parameter_validation_results"][validation_key]["found_params"] = found_params
                                 
-                                state["pending_tools"].append({
-                                    "step_id": step_id,
-                                    "step_name": step_name,
-                                    "step_desc": step_desc,
-                                    "tool_name": tool_name,
-                                    "parameters": updated_parameters,
-                                    "reasoning": reasoning
-                                })
-                                state["validated_tools"].append(validation_key)
+                                if validation_key not in state["validated_tools"]:
+                                    state["validated_tools"].append(validation_key)
+                                    state["pending_tools"].append({
+                                        "step_id": step_id,
+                                        "step_name": step_name,
+                                        "step_desc": step_desc,
+                                        "tool_name": tool_name,
+                                        "parameters": updated_parameters,
+                                        "reasoning": reasoning
+                                    })
                             else:
                                 # 更新后仍有缺失参数，需要人工干预
                                 missing_params = missing_params_updated
@@ -470,12 +638,8 @@ class DecisionNode:
                                 state, step, tool_info, missing_params, schema
                             )
                             
-                            # 初始化干预请求列表（如果不存在）
-                            if "intervention_request" not in state:
-                                state["intervention_request"] = []
-                            
-                            # 添加新的干预请求到列表
-                            state["intervention_request"].append(intervention_request)
+                            # 设置干预请求为单个字典对象（不是列表）
+                            state["intervention_request"] = intervention_request
                             
                             # 设置状态为等待人工干预
                             state["status"] = "waiting_for_human"

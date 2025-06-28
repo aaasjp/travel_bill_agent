@@ -308,7 +308,7 @@ class ToolExecutionNode:
         Args:
             state: 状态对象
         """
-        self._add_execution_log(state, "tool_execution", "工具执行完成", {
+        self._add_execution_log(state, "tool_execution", "所有工具执行完成", {
             "final_status": state["status"],
             "completed_tools_count": len(state.get("completed_tools", []))
         })
