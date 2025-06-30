@@ -76,7 +76,7 @@ class DecisionNode:
         # 检查参数值是否为"未知"
         unknown_params = []
         for param, value in parameters.items():
-            if value == "未知" and param in required_params:
+            if (value == "未知" or value=="unknown") and param in required_params:
                 unknown_params.append(param)
         
         # 合并缺失和未知的参数
@@ -103,7 +103,7 @@ class DecisionNode:
                 result_data = result.get("result", {})
                 if isinstance(result_data, dict):
                     for param in missing_params:
-                        if param in result_data and result_data[param] not in [None, "", "未知"]:
+                        if param in result_data and result_data[param] not in [None, "", "未知", "unknown"]:
                             found_params[param] = result_data[param]
         
         return found_params
@@ -505,7 +505,7 @@ class DecisionNode:
             
             # 将工具schema存储到state中，供后续节点使用
             print(f"----tool_schemas: {tool_schemas}")
-            state["available_tools"] = tool_schemas
+            state["tool_schemas"] = tool_schemas
             
             user_memories = self._format_user_memories(state)
             conversation_history = self._format_conversation_history(state)
