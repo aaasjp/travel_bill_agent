@@ -379,7 +379,7 @@ class MemoryStore:
         # 构建完整提示
         prompt = prompt_template.format(memory_desc=memory_desc)
 
-        print("【add memory by llm prompt】: ", prompt)
+        print(f"【MEMORY ADD PROMPT】:\n{prompt}")
         
         # 调用LLM
         response = llm.invoke(prompt)
@@ -387,6 +387,7 @@ class MemoryStore:
         try:
             # 解析响应内容
             content = extract_json_from_response(response.content)
+            print(f"【MEMORY ADD RESPONSE】:\n{response.content}")
             # 解析JSON
             memory_data = json.loads(content)
             
@@ -453,11 +454,11 @@ class MemoryStore:
             top_k=top_k
         )
         
-        print("search by llm prompt: ", prompt)
+        print(f"【MEMORY SEARCH PROMPT】:\n{prompt}")
         # 调用LLM
         response = llm.invoke(prompt)
 
-        print("search by llm response: ", response.content)
+        print(f"【MEMORY SEARCH RESPONSE】:\n{response.content}")
         
         # 解析响应，获取相关记忆的ID
         try:

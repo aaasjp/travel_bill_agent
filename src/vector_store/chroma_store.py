@@ -379,8 +379,10 @@ class ChromaStore:
 """
             
             # 调用大模型进行判断
+            print(f"【VECTOR SIMILARITY PROMPT】:\n{prompt}")
             response = llm.invoke(prompt)
             result_text = response.content.strip()
+            print(f"【VECTOR SIMILARITY RESPONSE】:\n{result_text}")
             
             # 解析大模型返回的结果
             if not result_text:
@@ -733,11 +735,14 @@ class ChromaStore:
             
             # 调用大模型进行总结
             try:
+                print(f"【TEXT SUMMARIZATION PROMPT】:\n{summary_prompt}")
                 response = llm.invoke(summary_prompt)
                 summary = response.content.strip()
+                print(f"【TEXT SUMMARIZATION RESPONSE】:\n{summary}")
                 # 去掉think部分
                 summary = summary.split("</think>")[1].strip()
-                print(f"summary: {summary}")
+                print(f"【TEXT SUMMARIZATION FINAL】:\n{summary}")
+                
                 # 如果总结为空，返回错误
                 if not summary:
                     return {

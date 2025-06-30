@@ -31,6 +31,7 @@ class ToolExecutionNode:
             更新后的状态
         """
         try:
+            print("--------------------------------工具执行节点开始执行--------------------------------")
             # 设置created_at时间戳（如果不存在）
             if "created_at" not in state:
                 from datetime import datetime
@@ -39,7 +40,8 @@ class ToolExecutionNode:
             # 检查是否有待执行的工具
             pending_tools = state.get("pending_tools", [])
             if not pending_tools:
-                return state
+                # 清理状态对象，移除可能导致循环引用的字段
+                return self._clean_state_for_serialization(state)
             
             # 初始化状态
             self._initialize_state(state)
@@ -61,7 +63,7 @@ class ToolExecutionNode:
                 
                 # 执行工具调用
                 execution_result = await self._execute_single_tool(
-                    tool_name, parameters, step_id, step_name, step_desc, reasoning
+                    state, tool_name, parameters, step_id, step_name, step_desc, reasoning
                 )
                 
                 if execution_result["status"] == "success":
@@ -77,7 +79,8 @@ class ToolExecutionNode:
                     from datetime import datetime
                     state["updated_at"] = datetime.now()
                     
-                    return state
+                    # 清理状态对象，移除可能导致循环引用的字段
+                    return self._clean_state_for_serialization(state)
             
             # 从pending_tools中移除成功执行的工具
             state["pending_tools"] = [tool for tool in pending_tools if tool.get("tool_name") not in successful_tools]
@@ -90,7 +93,8 @@ class ToolExecutionNode:
             from datetime import datetime
             state["updated_at"] = datetime.now()
 
-            return state
+            # 清理状态对象，移除可能导致循环引用的字段
+            return self._clean_state_for_serialization(state)
             
         except Exception as e:
             # 记录未捕获的异常
@@ -101,7 +105,8 @@ class ToolExecutionNode:
             from datetime import datetime
             state["updated_at"] = datetime.now()
             
-            return state
+            # 清理状态对象，移除可能导致循环引用的字段
+            return self._clean_state_for_serialization(state)
     
     def _initialize_state(self, state: State) -> None:
         """初始化状态中的必要字段"""
@@ -115,7 +120,91 @@ class ToolExecutionNode:
         if "current_results" not in state:
             state["current_results"] = None
     
-    async def _execute_single_tool(self, tool_name: str, parameters: Dict, 
+    def _clean_state_for_serialization(self, state: State) -> State:
+        """清理状态对象，移除可能导致循环引用的字段
+        
+        Args:
+            state: 原始状态对象
+            
+        Returns:
+            清理后的状态对象
+        """
+        # 创建状态对象的副本，避免修改原始对象
+        cleaned_state = state.copy()
+        
+        # 移除可能导致循环引用的字段
+        problematic_fields = [
+            "available_tools",  # 工具schema可能包含循环引用
+            "tool_registry",    # 工具注册表实例
+            "llm",             # 语言模型实例
+            "memory_store",    # 记忆存储实例
+            "self",            # 可能的self引用
+            "_tool_registry",  # 私有字段
+            "_llm",           # 私有字段
+            "_memory_store"   # 私有字段
+        ]
+        
+        for field in problematic_fields:
+            if field in cleaned_state:
+                del cleaned_state[field]
+        
+        # 清理工具结果中的复杂对象
+        if "tool_results" in cleaned_state:
+            for tool_name, result in cleaned_state["tool_results"].items():
+                if isinstance(result, dict):
+                    # 移除可能包含循环引用的字段
+                    problematic_result_fields = ["schema", "tool_instance", "self", "_tool", "tool"]
+                    for field in problematic_result_fields:
+                        if field in result:
+                            del result[field]
+        
+        # 清理执行日志中的复杂对象
+        if "execution_log" in cleaned_state:
+            for log_entry in cleaned_state["execution_log"]:
+                if isinstance(log_entry, dict) and "details" in log_entry:
+                    details = log_entry["details"]
+                    if isinstance(details, dict):
+                        # 移除可能包含循环引用的字段
+                        problematic_detail_fields = ["schema", "tool_instance", "self", "_tool", "tool"]
+                        for field in problematic_detail_fields:
+                            if field in details:
+                                del details[field]
+        
+        # 清理参数验证结果中的复杂对象
+        if "parameter_validation_results" in cleaned_state:
+            for validation_key, validation_result in cleaned_state["parameter_validation_results"].items():
+                if isinstance(validation_result, dict):
+                    # 移除可能包含循环引用的字段
+                    if "schema" in validation_result:
+                        # 只保留schema的基本信息，移除可能包含循环引用的部分
+                        schema = validation_result["schema"]
+                        if isinstance(schema, dict):
+                            # 保留基本信息，移除复杂对象
+                            safe_schema = {
+                                "name": schema.get("name"),
+                                "description": schema.get("description"),
+                                "group": schema.get("group")
+                            }
+                            if "parameters" in schema:
+                                safe_schema["parameters"] = {
+                                    "type": schema["parameters"].get("type"),
+                                    "required": schema["parameters"].get("required", [])
+                                }
+                            validation_result["schema"] = safe_schema
+        
+        # 清理反思结果中的复杂对象
+        if "reflection_results" in cleaned_state:
+            reflection_results = cleaned_state["reflection_results"]
+            if isinstance(reflection_results, dict):
+                # 移除可能包含循环引用的字段
+                problematic_reflection_fields = ["schema", "tool_instance", "self", "_tool", "tool"]
+                for field in problematic_reflection_fields:
+                    if field in reflection_results:
+                        del reflection_results[field]
+        
+        return cleaned_state
+    
+    async def _execute_single_tool(self, state: State, tool_name: str, parameters: Dict, 
                                  step_id: str, step_name: str, step_desc: str, reasoning: str) -> Dict:
         """执行单个工具调用
         
@@ -137,8 +226,18 @@ class ToolExecutionNode:
             tool_start_time = time.time()
             
             try:
-                print(f"----tool_execution tool_name: {tool_name}")
-                print(f"----tool_execution parameters: {parameters}")
+                
+                
+                # 从state中获取工具的required参数信息
+                available_tools = state.get("available_tools", [])
+                required_params = []
+                for tool_schema in available_tools:
+                    if tool_schema.get("name") == tool_name:
+                        required_params = tool_schema.get("parameters", {}).get("required", [])
+                        break
+                
+                print(f"----tool_execution tool_name: {tool_name}, parameters: ({parameters}), required_parameters: ({required_params})")
+                
                 if retry_count > 0:
                     print(f"----tool_execution retry attempt: {retry_count}")
                 

@@ -112,14 +112,19 @@ class ToolRegistry:
         schemas = []
         for group_name, group_tools in self._tool_groups.items():
             for tool in group_tools.values():
+                # 获取工具的参数定义
+                tool_params = tool.parameters
+                properties = tool_params.get("properties", {})
+                required = tool_params.get("required", [])
+                
                 schema = {
                     "name": tool.name,
                     "description": tool.description,
                     "group": group_name,
                     "parameters": {
                         "type": "object",
-                        "properties": tool.parameters,
-                        "required": list(tool.parameters.keys())
+                        "properties": properties,
+                        "required": required
                     }
                 }
                 schemas.append(schema)

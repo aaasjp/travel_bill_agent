@@ -264,7 +264,49 @@ reimbursement-assistant使用 LangGraph 构建，包含以下主要节点：
 
 ### 常见问题
 
-#### 1. TypedDict 错误
+#### 1. GraphInterrupt 错误
+
+如果遇到 `langgraph.errors.GraphInterrupt` 错误，这是**正常行为**，不是真正的错误：
+
+```python
+# 这个错误表示系统需要人工干预
+langgraph.errors.GraphInterrupt: (Interrupt(value={'instruction': '...'}, resumable=True, ns=['human_intervention:...']),)
+```
+
+**原因**：
+- 系统检测到需要人工干预的情况（如缺少参数、需要确认等）
+- LangGraph 框架主动中断执行流程，等待人工输入
+- 这是设计上的预期行为
+
+**解决方法**：
+1. 检查响应中的 `intervention_request` 字段
+2. 根据提示提供必要的信息
+3. 调用 `/human_feedback/{task_id}` 端点提供反馈
+4. 系统会自动恢复执行
+
+**示例**：
+```bash
+# 1. 系统返回需要人工干预
+curl -X POST http://localhost:8000/process \
+  -H "Content-Type: application/json" \
+  -d '{"input": "帮我把去北京出差的费用报销了"}'
+
+# 响应：
+{
+  "task_id": "xxx",
+  "status": "waiting_for_human",
+  "message": "需要人工干预",
+  "instruction": "请提供您的员工用户ID...",
+  "next_action": "请调用 /human_feedback/{task_id} 端点提供反馈"
+}
+
+# 2. 提供人工反馈
+curl -X POST http://localhost:8000/human_feedback/xxx \
+  -H "Content-Type: application/json" \
+  -d '{"action": "modify", "additional_info": {"user_id": "U1234567"}}'
+```
+
+#### 2. TypedDict 错误
 
 如果遇到 `Please use typing_extensions.TypedDict instead of typing.TypedDict` 错误：
 
@@ -273,7 +315,7 @@ reimbursement-assistant使用 LangGraph 构建，包含以下主要节点：
 pip install typing_extensions>=4.8.0
 ```
 
-#### 2. 端口被占用
+#### 3. 端口被占用
 
 如果端口 2024 被占用：
 
@@ -285,40 +327,19 @@ langgraph dev --port 2025
 lsof -ti:2024 | xargs kill -9
 ```
 
-#### 3. 模块导入错误
+#### 4. 模块导入错误
 
-如果遇到模块导入错误：
+如果遇到模块导入错误，请检查：
 
 ```bash
-# 确保在项目根目录
-cd /path/to/baoxiao-assistant
+# 确保在正确的环境中
+conda activate travel-bill-agent
 
-# 激活虚拟环境
-source venv/bin/activate
-
-# 重新安装依赖
+# 检查依赖是否完整
 pip install -r requirements.txt
-```
 
-#### 4. LangSmith 连接问题
-
-如果 LangSmith 无法连接：
-
-1. 检查 `.env` 文件中的 `LANGCHAIN_API_KEY` 是否正确
-2. 确认网络连接正常
-3. 验证 LangSmith 服务状态
-
-### 调试模式
-
-启用详细日志：
-
-```bash
-# 设置环境变量
-export LANGCHAIN_VERBOSE=true
-export LANGCHAIN_DEBUG=true
-
-# 启动服务
-langgraph dev --port 2024
+# 检查Python路径
+python -c "import sys; print(sys.path)"
 ```
 
 ## 贡献

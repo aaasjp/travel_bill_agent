@@ -275,6 +275,8 @@ class DecisionNode:
             
             return memories_text
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return f"记忆信息格式化出错: {str(e)}"
     
     def _format_conversation_history(self, state: State) -> str:
@@ -300,6 +302,8 @@ class DecisionNode:
             
             return history_text
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return f"对话历史格式化出错: {str(e)}"
     
     def _format_user_info(self, state: State) -> str:
@@ -323,6 +327,8 @@ class DecisionNode:
             
             return info_text
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return f"用户信息格式化出错: {str(e)}"
     
     def _format_reflection_results(self, state: State) -> str:
@@ -350,6 +356,8 @@ class DecisionNode:
             # 其他情况，转换为字符串
             return f"反思结果：\n{str(reflection_results)}"
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return f"反思结果格式化出错: {str(e)}"
     
     def _format_intervention_request(self, state: State) -> str:
@@ -377,6 +385,8 @@ class DecisionNode:
             # 其他情况，转换为字符串
             return f"人工干预请求：\n{str(intervention_request)}"
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return f"人工干预请求格式化出错: {str(e)}"
     
     def _format_human_feedback(self, state: State) -> str:
@@ -404,6 +414,8 @@ class DecisionNode:
             # 其他情况，转换为字符串
             return f"人工反馈结果：\n{str(human_feedback)}"
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return f"人工反馈结果格式化出错: {str(e)}"
     
     def extract_json_from_response(self, text: str) -> str:
@@ -444,6 +456,8 @@ class DecisionNode:
                         # 解析失败，继续尝试
                         continue
         except Exception:
+            import traceback
+            traceback.print_exc()
             # 发生其他异常，忽略并继续
             pass
             
@@ -487,7 +501,12 @@ class DecisionNode:
                 return state
             
             # 准备决策所需的上下文
-            tools_description, _ = self._get_available_tools_description()
+            tools_description, tool_schemas = self._get_available_tools_description()
+            
+            # 将工具schema存储到state中，供后续节点使用
+            print(f"----tool_schemas: {tool_schemas}")
+            state["available_tools"] = tool_schemas
+            
             user_memories = self._format_user_memories(state)
             conversation_history = self._format_conversation_history(state)
             user_info = self._format_user_info(state)
@@ -513,11 +532,11 @@ class DecisionNode:
             }
             
             # 执行决策
-            print(f"【PROMPT】:\n{prompt.format_messages(**inputs)}")
+            print(f"【DECISION PROMPT】:\n{prompt.format_messages(**inputs)}")
             response = self.llm.invoke(prompt.format_messages(**inputs))
             response_text = response.content
 
-            print(f"【RESPONSE】:\n{response_text}")
+            print(f"【DECISION RESPONSE】:\n{response_text}")
             
             # 提取并解析 JSON
             json_str = self.extract_json_from_response(response_text)
@@ -526,6 +545,8 @@ class DecisionNode:
             try:
                 decision_result = json.loads(json_str)
             except json.JSONDecodeError:
+                import traceback
+                traceback.print_exc()
                 # 如果解析失败，创建默认结果
                 decision_result = {
                     "step_tools": []
@@ -594,6 +615,7 @@ class DecisionNode:
                                 "parameters": parameters,
                                 "reasoning": reasoning
                             })
+                            print(f"{tool_name} 参数满足要求，添加到待执行列表")
                     else:
                         # 参数不满足要求，检查之前的执行结果
                         found_params = self._check_previous_results_for_parameters(state, missing_params)
@@ -623,26 +645,32 @@ class DecisionNode:
                                         "parameters": updated_parameters,
                                         "reasoning": reasoning
                                     })
+                                    print(f"{tool_name} 参数满足要求，添加到待执行列表")
                             else:
                                 # 更新后仍有缺失参数，需要人工干预
                                 missing_params = missing_params_updated
                                 state["parameter_validation_results"][validation_key]["missing_params"] = missing_params
                                 state["parameter_validation_results"][validation_key]["found_params"] = found_params
+                                print(f"{tool_name} 参数不满足要求")
                         else:
                             # 没有找到参数，需要人工干预
+                            print(f"{tool_name} 没有找到参数")
                             pass
                         
                         # 如果仍有缺失参数，创建人工干预请求
                         if missing_params:
-                            intervention_request = self._create_intervention_request_for_parameters(
-                                state, step, tool_info, missing_params, schema
-                            )
-                            
-                            # 设置干预请求为单个字典对象（不是列表）
-                            state["intervention_request"] = intervention_request
-                            
-                            # 设置状态为等待人工干预
-                            state["status"] = "waiting_for_human"
+                            # 如果pending_tools没有工具，则创建人工干预请求,否则设置状态为可以执行工具
+                            if not state["pending_tools"]:
+                                intervention_request = self._create_intervention_request_for_parameters(
+                                    state, step, tool_info, missing_params, schema
+                                )
+                                # 设置干预请求为单个字典对象（不是列表）
+                                state["intervention_request"] = intervention_request
+                                
+                                # 设置状态为等待人工干预
+                                state["status"] = "waiting_for_human"
+                            else:
+                                state["status"] = "ready_for_execution"
                             
                             # 更新时间戳
                             state["updated_at"] = datetime.now()

@@ -123,8 +123,10 @@ class HumanInterventionNode:
                 {"role": "user", "content": base_prompt}
             ]
             
+            print(f"【HUMAN INTERVENTION PROMPT】:\n{json.dumps(messages, ensure_ascii=False, indent=2)}")
             response = self.llm.invoke(messages)
             instruction = response.content.strip()
+            print(f"【HUMAN INTERVENTION RESPONSE】:\n{instruction}")
             
             return instruction
             
@@ -157,6 +159,7 @@ class HumanInterventionNode:
             更新后的状态
         """
         try:
+            print("--------------------------------人工干预节点开始执行--------------------------------")
             # 检查是否有干预请求
             if "intervention_request" not in state or "intervention_type" not in state["intervention_request"] or "intervention_priority" not in state["intervention_request"]:
                 state["status"] = "intervention_error"
@@ -185,7 +188,6 @@ class HumanInterventionNode:
             })
 
             await self._handle_intervention_feedback(state, human_feedback)
-            
             
             return state
             
